@@ -1,0 +1,17 @@
+{
+  "name": "@org/db",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "nx": {
+    "tags": ["scope:shared"]
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "tslib": "^2.3.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.0.0"
+  }
+}

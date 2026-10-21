@@ -2,21 +2,41 @@
   "name": "@org/source",
   "version": "0.0.0",
   "license": "MIT",
-  "scripts": {},
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "dev:checkout": "nx run checkout:dev",
+    "dev:admin-dashboard": "nx run admin-dashboard:dev",
+    "build": "nx run-many --target=build --projects=checkout,admin-dashboard"
+  },
   "private": true,
-  "dependencies": {},
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "next": "^16.4.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
   "devDependencies": {
+    "@nx/devkit": "23.3.0",
     "@nx/js": "23.2.0",
+    "@nx/next": "23.3.0",
+    "@nx/playwright": "23.3.0",
+    "@playwright/test": "^1.37.0",
     "@swc-node/register": "1.11.1",
+    "@swc/cli": "~0.8.1",
     "@swc/core": "1.15.8",
     "@swc/helpers": "0.5.18",
+    "@types/better-sqlite3": "^9.0.0",
     "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "nx": "23.2.0",
     "prettier": "^3.8.1",
     "tslib": "^2.3.0",
     "typescript": "~6.0.3"
   },
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "checkout",
+    "admin-dashboard"
   ]
 }

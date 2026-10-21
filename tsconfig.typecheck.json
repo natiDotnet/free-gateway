@@ -1,0 +1,29 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "jsx": "preserve",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUncheckedSideEffectImports": false,
+    "moduleResolution": "bundler",
+    "module": "esnext",
+    "target": "es2022"
+  },
+  "include": [
+    "checkout/src/**/*.ts",
+    "checkout/src/**/*.tsx",
+    "admin-dashboard/src/**/*.ts",
+    "admin-dashboard/src/**/*.tsx",
+    "packages/chapa/src/**/*.ts",
+    "packages/store/src/**/*.ts"
+  ],
+  "exclude": ["node_modules", ".next", "dist"]
+}

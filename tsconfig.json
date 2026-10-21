@@ -2,6 +2,25 @@
   "extends": "./tsconfig.base.json",
   "compileOnSave": false,
   "files": [],
-  "references": [],
+  "references": [
+    {
+      "path": "./checkout-e2e"
+    },
+    {
+      "path": "./checkout"
+    },
+    {
+      "path": "./admin-dashboard-e2e"
+    },
+    {
+      "path": "./admin-dashboard"
+    },
+    {
+      "path": "./packages/chapa"
+    },
+    {
+      "path": "./packages/store"
+    }
+  ],
   "compilerOptions": {}
 }

@@ -1,109 +1,340 @@
-# New Nx Repository
+# Free Gateway — Payment Gateway Backend (Next.js + Nx)
 
-<a alt="Nx logo" href="https://nx.dev" target="_blank" rel="noreferrer"><img src="https://raw.githubusercontent.com/nrwl/nx/master/images/nx-logo.png" width="45"></a>
+A backend gateway that accepts Chapa-style payment initialization requests,
+stores them in a **SQLite database**, and processes webhooks from payment
+providers (Chapa, Telebirr, …) to update payment status.
 
-✨ Your new, shiny [Nx workspace](https://nx.dev) is ready ✨.
+Built as an Nx monorepo with two Next.js apps and shared libraries:
 
-[Learn more about this workspace setup and its capabilities](https://nx.dev/docs/technologies/typescript/introduction?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) or run `npx nx graph` to visually explore what was created. Now, let's get you up to speed!
+| Project | Port | Purpose |
+|---------|------|---------|
+| `checkout` | 3000 | Public payment gateway: init, hosted checkout page, verify, webhooks |
+| `admin-dashboard` | 3001 | Admin view: list transactions, server-side verify |
+| `@org/db` | — | Shared SQLite database layer (`better-sqlite3`) |
+| `@org/chapa` | — | Chapa API v2 outbound client |
 
-🚀 If you haven't connected to Nx Cloud yet, [complete your setup here](https://cloud.nx.app/get-started). Get faster builds with remote caching, distributed task execution, and self-healing CI. [See how your workspace can benefit](#nx-cloud).
-
-## Generate a library
-
-```sh
-npx nx g @nx/js:lib packages/pkg1 --publishable --importPath=@my-org/pkg1
-```
-
-## Run tasks
-
-To build the library use:
-
-```sh
-npx nx run pkg1:build
-```
-
-To run any task with Nx use:
-
-```sh
-npx nx run <project-name>:<target>
-```
-
-These targets are either [inferred automatically](https://nx.dev/docs/concepts/inferred-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) or defined in the `project.json` or `package.json` files.
-
-[More about running tasks in the docs &raquo;](https://nx.dev/docs/features/run-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-## Versioning and releasing
-
-To version and release the library use
+## Data flow
 
 ```
-npx nx release
+1. Customer submits payment details                       (checkout /)
+2. POST /api/payments/init                              (checkout)
+   → validates payload, stores Payment (status=pending)
+   → returns checkout_url = /payment/{merchantReference}
+3. Customer lands on the gateway's OWN hosted checkout  (checkout /payment/[id])
+   → picks a payment method (Telebirr / Chapa / Card)
+   → POST /api/payments/[reference]/submit
+   → Payment → auth_needed (awaiting the provider)
+4. Provider webhook (Telebirr / Chapa / …)              (checkout /api/webhooks/[provider])
+   → POST /api/webhooks/cancel or /api/webhooks/chapa
+   → normalizes payload, updates Payment status
+   → records a PaymentEvent (audit log)
+5. Server-side verification BEFORE delivering value     (checkout /api/payments/[reference]/verify)
+   → returns authoritative status from the database
+   → the hosted page polls this until the webhook lands
+6. Admin views & verifies transactions                  (admin-dashboard /)
 ```
 
-Pass `--dry-run` to see what would happen without actually releasing the library.
+Key rule: **redirects are UX signals, not proof**. The provider's webhook is
+the source of truth, and value is only delivered after server-side
+verification.
 
-[Learn more about Nx release &raquo;](https://nx.dev/docs/features/manage-releases?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+## API reference
 
-## Keep TypeScript project references up to date
+### POST /api/payments/init
+Initialize a payment (Chapa-style payload) and store it in the database.
 
-Nx automatically updates TypeScript [project references](https://www.typescriptlang.org/docs/handbook/project-references.html) in `tsconfig.json` files to ensure they remain accurate based on your project dependencies (`import` or `require` statements). This sync is automatically done when running tasks such as `build` or `typecheck`, which require updated references to function correctly.
-
-To manually trigger the process to sync the project graph dependencies information to the TypeScript project references, run the following command:
-
-```sh
-npx nx sync
+Body:
+```json
+{
+  "amount": 500,
+  "currency": "USD",
+  "customer": {
+    "first_name": "Abebe",
+    "last_name": "Bikila",
+    "email": "abebe@example.com",
+    "phone_number": "+251960724272"
+  },
+  "merchant_reference": "ORD-99887",
+  "meta": { "order_id": "ORD-99887", "notes": "..." },
+  "return_url": "http://localhost:3000/success",
+  "cancel_url": "http://localhost:3000/cancel",
+  "notification_url": "http://localhost:3000/api/webhooks/chapa"
+}
 ```
 
-You can enforce that the TypeScript project references are always in the correct state when running in CI by adding a step to your CI job configuration that runs the following command:
-
-```sh
-npx nx sync:check
+Response:
+```json
+{
+  "status": "success",
+  "message": "Payment initialized",
+  "data": {
+    "checkout_url": "http://localhost:3000/payment/ORD-99887",
+    "reference": "ORD-99887",
+    "amount": 500,
+    "currency": "USD"
+  }
+}
 ```
 
-[Learn more about nx sync](https://nx.dev/reference/nx-commands#sync)
+- `amount` and `currency` are required.
+- `merchant_reference` must be unique (idempotency — duplicates are rejected
+  once non-pending).
+- Supported currencies: USD, ETB, UGX, DJF.
 
-## Nx Cloud
+### GET /api/payments/[reference]/verify
+Server-side verification. Returns the authoritative payment status from the
+database (updated by webhooks).
 
-Nx Cloud ensures a [fast and scalable CI](https://nx.dev/nx-cloud?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) pipeline. It includes features such as:
-
-- [Remote caching](https://nx.dev/docs/features/ci-features/remote-cache?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Task distribution across multiple machines](https://nx.dev/docs/features/ci-features/distribute-task-execution?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Automated e2e test splitting](https://nx.dev/docs/features/ci-features/split-e2e-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Task flakiness detection and rerunning](https://nx.dev/docs/features/ci-features/flaky-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-### Set up CI (non-Github Actions CI)
-
-**Note:** This is only required if your CI provider is not GitHub Actions.
-
-Use the following command to configure a CI workflow for your workspace:
-
-```sh
-npx nx g ci-workflow
+```json
+{
+  "status": "success",
+  "message": "Payment is success",
+  "data": {
+    "reference": "ORD-99887",
+    "providerReference": "CHAPA_12345",
+    "amount": 500,
+    "currency": "USD",
+    "status": "success"
+  }
+}
 ```
 
-[Learn more about Nx on CI](https://nx.dev/docs/features/ci-features?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+Only deliver value when `data.status === "success"`.
 
-## Install Nx Console
+### POST /api/payments/[reference]/submit
+Called by the gateway's hosted checkout page when the customer submits a
+payment method.
 
-Nx Console is an editor extension that enriches your developer experience. It lets you run tasks, generate code, and improves code autocompletion in your IDE. It is available for VSCode and IntelliJ.
+```json
+{ "method": "telebirr", "phone": "+251960724272" }
+```
+- `method`: `telebirr | chapa | card`
+- `telebirr` requires `phone` in international format (validated server-side,
+  masked before storage).
+- `card` accepts `last4` only — raw card numbers are never stored.
 
-[Install Nx Console &raquo;](https://nx.dev/docs/getting-started/editor-setup?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+Response sets the payment to `auth_needed` (awaiting the provider) and
+records a `payment.submitted` audit event.
 
-## 🔗 Learn More
+### POST /api/payments/[reference]/cancel
+Marks a pending/awaiting payment as `cancelled` and records an audit event.
+Submitting after cancellation is rejected with `409`.
 
-- [Nx Documentation](https://nx.dev/docs)
-- [Crafting Your Workspace Tutorial](https://nx.dev/docs/getting-started/tutorials/crafting-your-workspace)
-- [Module Boundaries](https://nx.dev/docs/features/enforce-module-boundaries)
-- [Releasing Packages](https://nx.dev/docs/features/manage-releases)
-- [Nx Plugins](https://nx.dev/docs/concepts/nx-plugins)
-- [Nx Cloud](https://nx.dev/nx-cloud)
+### POST /api/webhooks/[provider]
+Receives webhooks from providers. `provider` is `chapa` or `telebirr` (or any
+string you configure).
 
-## 💬 Community
+Chapa-style payload:
+```json
+{
+  "event": "payment.success",
+  "data": {
+    "reference": "ORD-99887",
+    "chapa_reference": "CHAPA_12345",
+    "amount": "500",
+    "currency": "USD",
+    "status": "success"
+  }
+}
+```
 
-Join the Nx community:
+Telebirr SMS notify (forwarded by an SMS gateway — real-world payload, flat,
+no merchant reference):
+```json
+{
+  "createdAt": "2026-10-18T15:09:28.707Z",
+  "provider": "telebirr",
+  "from": "127",
+  "amount": "5.00",
+  "sender_name": "Natnael Yirga",
+  "sender_phone": "2519****0217",
+  "datetime": "19/10/2026 15:54:53",
+  "transaction_number": "DJJ928K0V3",
+  "balance": "ETB 5.00.",
+  "text": "Dear TAMRAT \nYou have received ETB 5.00 from Natnael Yirga(2519****0217)  on 19/10/2026 15:54:53. Your transaction number is DJJ928K0V3. Your current E-Money Account balance is ETB 5.00.\nThank you for using telebirr\nEthio telecom",
+  "sentStamp": 1792414493000,
+  "receivedStamp": 1792414497399,
+  "sim": "sim2"
+}
+```
+Telebirr SMS reconciliation order:
+1. **Idempotency** — a `transaction_number` that already settled a payment is
+   ignored (`Duplicate event`).
+2. **Text reference** — if the payer wrote the order reference (e.g. `ORD-…`
+   or `Ref: …`) in the transaction text, match it.
+3. **Amount match** — otherwise match an open ETB payment with the same
+   amount, preferring `auth_needed` (the customer already chose Telebirr on
+   the hosted checkout). Unmatched SMS are acked and logged, never guessed.
+4. The raw SMS payload is stored in `payment_events` (audit log), and the
+   payment row records `provider = telebirr` + `provider_reference =
+   DJJ928K0V3`.
 
-- [Discord](https://go.nx.dev/community)
-- [X (Twitter)](https://twitter.com/nxdevtools)
-- [LinkedIn](https://www.linkedin.com/company/nrwl)
-- [YouTube](https://www.youtube.com/@nxdevtools)
-- [Blog](https://nx.dev/blog)
+Optional integrity guard — `checkout/.env`:
+```
+# Only accept SMS notifications addressed to this Telebirr account name
+TELEBIRR_ACCOUNT_NAME=TAMRAT
+```
+
+The endpoint:
+1. Normalizes the provider-specific payload into `{ eventType, reference, status }`.
+2. Finds the payment by `provider_reference` or `merchant_reference` (plus the
+   Telebirr reconciliation above).
+3. Updates the payment status and records a `PaymentEvent`.
+4. Always replies `200 Event received` (acknowledges the webhook to prevent
+   provider retries).
+
+> **Security TODO:** Add webhook signature validation (e.g. verify a Chapa /
+> Telebirr HMAC signature from request headers) before trusting the payload.
+
+### Database schema (`@org/db`)
+
+Stored in `dev.sqlite` at the workspace root (SQLite, WAL mode).
+
+```sql
+payments (
+  id TEXT PRIMARY KEY,
+  merchant_reference TEXT UNIQUE NOT NULL,
+  amount REAL NOT NULL,
+  currency TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',   -- pending|success|failed|cancelled|incomplete|auth_needed|blocked
+  checkout_url TEXT,
+  provider_reference TEXT UNIQUE,            -- upstream provider txn ref (Chapa/Telebirr)
+  provider TEXT NOT NULL DEFAULT 'chapa',   -- chapa | telebirr | ...
+  customer_name TEXT,
+  customer_email TEXT,
+  customer_phone TEXT,
+  meta TEXT,                                 -- JSON
+  return_url TEXT,
+  cancel_url TEXT,
+  notification_url TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+)
+
+payment_events (
+  id TEXT PRIMARY KEY,
+  payment_id TEXT REFERENCES payments(id) ON DELETE CASCADE,
+  event_type TEXT NOT NULL,                  -- payment.success | payment.failed | …
+  provider TEXT NOT NULL,
+  reference TEXT,
+  payload TEXT,                              -- JSON raw webhook body
+  created_at TEXT DEFAULT (datetime('now'))
+)
+```
+
+## Setup
+
+```bash
+cd free-gateway
+npm install
+```
+
+### Environment variables
+
+`checkout/.env`:
+```
+DATABASE_PATH=/absolute/path/to/dev.sqlite   # optional; defaults to workspace-root dev.sqlite
+GATEWAY_SIMULATE_PROVIDERS=true              # demo only: auto-dispatch a simulated provider webhook after submit
+GATEWAY_SIMULATE_DELAY_MS=2000               # demo delay before the simulated webhook fires
+PORT=3000
+```
+
+`admin-dashboard/.env`:
+```
+PORT=3001
+```
+
+The database path is resolved automatically to the workspace root (where
+`nx.json` lives), so both apps share the same `dev.sqlite` file regardless of
+which directory each dev server runs from.
+
+## Run
+
+Terminal 1 — checkout gateway:
+```bash
+npm run dev:checkout        # http://localhost:3000
+```
+
+Terminal 2 — admin dashboard:
+```bash
+npm run dev:admin-dashboard # http://localhost:3001
+```
+
+Open http://localhost:3000 to initialize a payment; open
+http://localhost:3001 to view and verify transactions.
+
+## Test the flow with curl
+
+```bash
+# 1. Initialize a payment (stored as pending); returns the gateway's checkout_url
+curl -s -X POST http://localhost:3000/api/payments/init \
+  -H 'Content-Type: application/json' \
+  -d '{"amount":"500","currency":"USD","merchant_reference":"ORD-TEST-001","customer":{"first_name":"A","last_name":"B","email":"a@b.com"}}'
+
+# 2. Open the gateway's hosted checkout and submit Telebirr
+curl -s -X POST http://localhost:3000/api/payments/ORD-TEST-001/submit \
+  -H 'Content-Type: application/json' \
+  -d '{"method":"telebirr","phone":"+251960724272"}'   # → auth_needed
+
+# 3. Verify (still awaiting the provider)
+curl http://localhost:3000/api/payments/ORD-TEST-001/verify
+
+# 4. Provider webhook (Chapa) confirms
+curl -s -X POST http://localhost:3000/api/webhooks/chapa \
+  -H 'Content-Type: application/json' \
+  -d '{"event":"payment.success","data":{"reference":"ORD-TEST-001","chapa_reference":"CHAPA_XYZ","amount":"500","currency":"USD"}}'
+
+# 5. Verify again (now success)
+curl http://localhost:3000/api/payments/ORD-TEST-001/verify
+
+# 6. Telebirr SMS notify (real-world payload — reconcile by amount)
+#    First create an open 5.00 ETB Telebirr payment:
+curl -s -X POST http://localhost:3000/api/payments/init \
+  -H 'Content-Type: application/json' \
+  -d '{"amount":"5.00","currency":"ETB","merchant_reference":"ORD-TEST-002","customer":{"first_name":"N","last_name":"Y","email":"n@b.com","phone_number":"+251911000217"}}'
+curl -s -X POST http://localhost:3000/api/payments/ORD-TEST-002/submit \
+  -H 'Content-Type: application/json' \
+  -d '{"method":"telebirr","phone":"+251911000217"}'
+#    Then post the SMS notification received from Telebirr:
+curl -s -X POST http://localhost:3000/api/webhooks/telebirr \
+  -H 'Content-Type: application/json' \
+  -d @- <<'EOF'
+{
+  "createdAt": "2026-10-18T15:09:28.707Z",
+  "provider": "telebirr",
+  "from": "127",
+  "amount": "5.00",
+  "sender_name": "Natnael Yirga",
+  "sender_phone": "2519****0217",
+  "datetime": "19/10/2026 15:54:53",
+  "transaction_number": "DJJ928K0V3",
+  "balance": "ETB 5.00.",
+  "text": "Dear TAMRAT \nYou have received ETB 5.00 from Natnael Yirga(2519****0217)  on 19/10/2026 15:54:53. Your transaction number is DJJ928K0V3. Your current E-Money Account balance is ETB 5.00.\nThank you for using telebirr\nEthio telecom",
+  "sentStamp": 1792414493000,
+  "receivedStamp": 1792414497399,
+  "sim": "sim2"
+}
+EOF
+
+#    Confirm the SMS settled it (success + provider_reference = DJJ928K0V3)
+curl http://localhost:3000/api/payments/ORD-TEST-002/verify
+
+# 7. Admin dashboard verifies the same record
+curl -s -X POST http://localhost:3001/api/payments/ORD-TEST-001/verify
+```
+
+## Type-check & build
+
+```bash
+npm run typecheck   # tsc across both apps + shared libs
+npm run build       # build both Next.js apps
+```
+
+## Production notes
+
+- Swap SQLite for PostgreSQL (or another SQL database) for multi-instance
+  deployments; `@org/db` is the single integration point.
+- Enable webhook signature validation in `api/webhooks/[provider]/route.ts`.
+- Replace the in-memory retry/payment page logic with your real provider SDKs
+  (Chapa, Telebirr, etc.) for the actual redirect/checkout step.
+- Add authentication/authorization to the admin dashboard and webhook endpoints.

@@ -48,3 +48,15 @@ Thumbs.db
 .nx/polygraph
 .nx/self-healing
 .nx/migrate-runs
+
+# Next.js
+.next
+out
+
+# Local SQLite database (gateway)
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+dev.sqlite
+
+test-output
