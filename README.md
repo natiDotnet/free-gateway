@@ -220,6 +220,34 @@ payment_events (
   payload TEXT,                              -- JSON raw webhook body
   created_at TEXT DEFAULT (datetime('now'))
 )
+
+admin_users (
+  id TEXT PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,               -- no-case compare
+  name TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'viewer',      -- admin | operator | viewer
+  password_hash TEXT NOT NULL,              -- scrypt:salt:hash
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  last_login_at TEXT
+)
+
+admin_sessions (
+  token_hash TEXT PRIMARY KEY,              -- SHA-256 of the cookie token
+  user_id TEXT REFERENCES admin_users(id) ON DELETE CASCADE,
+  created_at TEXT DEFAULT (datetime('now')),
+  expires_at TEXT NOT NULL
+)
+
+audit_log (
+  id TEXT PRIMARY KEY,
+  actor_id TEXT, actor_email TEXT, actor_role TEXT,
+  action TEXT NOT NULL,                     -- auth.login | payment.verify | user.create | …
+  target TEXT, detail TEXT,                 -- JSON
+  ip TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+)
 ```
 
 ## Setup
@@ -242,11 +270,70 @@ PORT=3000
 `admin-dashboard/.env`:
 ```
 PORT=3001
+
+# ── Admin console (RBAC) ─────────────────────────────────────────────
+# First administrator is seeded automatically when admin_users is empty:
+ADMIN_BOOTSTRAP_EMAIL=admin@freegateway.local        # default shown
+ADMIN_BOOTSTRAP_PASSWORD=ChangeMe!2026               # default shown; override for prod
+ADMIN_BOOTSTRAP_NAME=Gateway Admin                   # default shown
+
+ADMIN_SESSION_TTL_HOURS=8       # admin session lifetime (default 8)
+COOKIE_SECURE=false             # set true when serving admin over HTTPS
 ```
 
 The database path is resolved automatically to the workspace root (where
 `nx.json` lives), so both apps share the same `dev.sqlite` file regardless of
 which directory each dev server runs from.
+
+## Admin console — authentication & roles (`admin-dashboard`)
+
+The dashboard at `http://localhost:3001` is a full staff console protected
+by session auth and role-based access control (RBAC):
+
+| Role | Permissions |
+|---|---|
+| **Administrator** | everything: payments + verify/cancel, **user management**, audit |
+| **Operator** | payments + verify/cancel, audit |
+| **Viewer** | read-only payments |
+
+Architecture:
+- **Sessions** — opaque 256-bit tokens in an `HttpOnly` `SameSite=Lax` cookie;
+  only the SHA-256 hash is stored (`admin_sessions`), TTL via
+  `ADMIN_SESSION_TTL_HOURS`. Passwords are scrypt-hashed with per-user salts
+  (Node `crypto` — no extra dependency). Wrong-password attempts lock an
+  (ip, email) pair for 10 minutes after 5 failures.
+- **`src/proxy.ts` (edge)** — cheap gate: no session cookie → redirect to
+  `/login?next=…` (pages) or `401` (API), plus security headers
+  (`X-Frame-Options: DENY`, `nosniff`, referrer/permissions policy). The edge
+  layer deliberately cannot touch SQLite; real validation happens in the
+  Node runtime.
+- **Server guards** — every dashboard layout/page calls
+  `requirePagePermission(...)`; every API route re-checks
+  session + `can(role, permission)` (defense in depth). Pages render inside
+  `(dashboard)` route group with a role-filtered Tailwind sidebar.
+- **Audit** — `audit_log` records `auth.login` / `auth.login.failed` /
+  `auth.logout`, `payment.verify` / `payment.cancel`,
+  `user.create` / `user.role_change` / `user.activate` / `user.deactivate` /
+  `user.reset_password` / `account.password_change` with actor, target,
+  detail and IP. Password reset or deactivation revokes sessions instantly.
+- **Pages** — `/login`, `/payments` (search, status filter, stats tiles,
+  quick verify/cancel), `/payments/[reference]` (amount, customer, metadata,
+  provider event timeline, actions), `/users` (admin-only staff management),
+  `/audit`, `/account` (self-service password change).
+
+Login with curl:
+```bash
+# sign in (cookie jar) and call the API
+curl -s -c admin.jar -X POST http://localhost:3001/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@freegateway.local","password":"ChangeMe!2026"}'
+
+curl -s -b admin.jar http://localhost:3001/api/admin/users
+```
+
+Production hardening TODOs: run behind HTTPS (`COOKIE_SECURE=true`), replace
+the in-memory login throttle with Redis if you scale horizontally, and add
+TOTP 2FA for administrators.
 
 ## Run
 

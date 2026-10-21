@@ -2,6 +2,10 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "emitDeclarationOnly": false,
     "rootDir": ".",
     "jsx": "preserve",
     "lib": ["dom", "dom.iterable", "esnext"],
@@ -15,13 +19,20 @@
     "noUncheckedSideEffectImports": false,
     "moduleResolution": "bundler",
     "module": "esnext",
-    "target": "es2022"
+    "target": "es2022",
+    "paths": {
+      "@/*": ["./admin-dashboard/src/*", "./checkout/src/*"],
+      "@org/db": ["./packages/db/src/index.ts"],
+      "@org/chapa": ["./packages/chapa/src/lib/chapa.ts"],
+      "@org/store": ["./packages/store/src/payment-store.ts"]
+    }
   },
   "include": [
     "checkout/src/**/*.ts",
     "checkout/src/**/*.tsx",
     "admin-dashboard/src/**/*.ts",
     "admin-dashboard/src/**/*.tsx",
+    "packages/db/src/**/*.ts",
     "packages/chapa/src/**/*.ts",
     "packages/store/src/**/*.ts"
   ],

@@ -60,3 +60,5 @@ out
 dev.sqlite
 
 test-output
+# TS incremental build info
+*.tsbuildinfo
