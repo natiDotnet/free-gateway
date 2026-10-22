@@ -4,13 +4,15 @@
   "license": "MIT",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
-    "dev:checkout": "nx run checkout:dev",
-    "dev:admin-dashboard": "nx run admin-dashboard:dev",
-    "build": "nx run-many --target=build --projects=checkout,admin-dashboard"
+    "db:generate": "node packages/db/scripts/prisma.mjs generate",
+    "db:push": "node packages/db/scripts/prisma.mjs push",
+    "db:prepare": "node packages/db/scripts/prisma.mjs prepare",
+    "dev:checkout": "npm run db:generate && nx run checkout:dev",
+    "dev:admin-dashboard": "npm run db:generate && PORT=3001 nx run admin-dashboard:dev",
+    "build": "npm run db:generate && nx run-many --target=build --projects=checkout,admin-dashboard"
   },
   "private": true,
   "dependencies": {
-    "better-sqlite3": "^11.0.0",
     "next": "^16.4.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
@@ -26,12 +28,12 @@
     "@swc/core": "1.15.8",
     "@swc/helpers": "0.5.18",
     "@tailwindcss/postcss": "^4.1.16",
-    "@types/better-sqlite3": "^9.0.0",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "nx": "23.2.0",
     "postcss": "^8.5.6",
+    "prisma": "6.19.0",
     "prettier": "^3.8.1",
     "tailwindcss": "^4.1.16",
     "tslib": "^2.3.0",
@@ -41,5 +43,10 @@
     "packages/*",
     "checkout",
     "admin-dashboard"
-  ]
+  ],
+  "allowScripts": {
+    "@prisma/client@6.19.0": true,
+    "@prisma/engines@6.19.0": true,
+    "prisma@6.19.0": true
+  }
 }

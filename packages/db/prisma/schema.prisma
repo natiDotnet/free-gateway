@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Payment {
+  id                String         @id
+  merchantReference String         @unique @map("merchant_reference")
+  amount            Float
+  currency          String
+  status            String         @default("pending")
+  checkoutUrl       String?        @map("checkout_url")
+  providerReference String?        @unique @map("provider_reference")
+  provider          String         @default("chapa")
+  customerName      String?        @map("customer_name")
+  customerEmail     String?        @map("customer_email")
+  customerPhone     String?        @map("customer_phone")
+  meta              String?
+  returnUrl         String?        @map("return_url")
+  cancelUrl         String?        @map("cancel_url")
+  notificationUrl   String?        @map("notification_url")
+  createdAt         String         @map("created_at")
+  updatedAt         String         @map("updated_at")
+  events            PaymentEvent[]
+
+  @@index([status], map: "idx_payments_status")
+  @@index([provider], map: "idx_payments_provider")
+  @@map("payments")
+}
+
+model PaymentEvent {
+  id        String   @id
+  paymentId String   @map("payment_id")
+  eventType String   @map("event_type")
+  provider  String
+  reference String?
+  payload   String?
+  createdAt String   @map("created_at")
+  payment   Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId], map: "idx_payment_events_payment_id")
+  @@index([provider, reference], map: "idx_payment_events_provider_ref")
+  @@map("payment_events")
+}
+
+model AdminUser {
+  id           String         @id
+  email        String         @unique
+  name         String
+  role         String         @default("viewer")
+  passwordHash String         @map("password_hash")
+  isActive     Boolean        @default(true) @map("is_active")
+  createdAt    String         @map("created_at")
+  updatedAt    String         @map("updated_at")
+  lastLoginAt  String?        @map("last_login_at")
+  sessions     AdminSession[]
+
+  @@map("admin_users")
+}
+
+model AdminSession {
+  tokenHash String   @id @map("token_hash")
+  userId    String   @map("user_id")
+  createdAt String   @map("created_at")
+  expiresAt String   @map("expires_at")
+  user      AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_admin_sessions_user")
+  @@index([expiresAt], map: "idx_admin_sessions_expiry")
+  @@map("admin_sessions")
+}
+
+model AuditLog {
+  id        String   @id
+  actorId   String?  @map("actor_id")
+  actorEmail String? @map("actor_email")
+  actorRole String?  @map("actor_role")
+  action    String
+  target    String?
+  detail    String?
+  ip        String?
+  createdAt String   @map("created_at")
+
+  @@index([createdAt], map: "idx_audit_log_created")
+  @@map("audit_log")
+}

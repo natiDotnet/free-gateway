@@ -15,7 +15,7 @@ export default async function LoginPage() {
   if (admin) redirect('/payments');
 
   // Belt & braces: make sure the first admin exists before rendering the form.
-  ensureBootstrapAdmin();
+  await ensureBootstrapAdmin();
 
   const bootstrapEmail = (
     process.env.ADMIN_BOOTSTRAP_EMAIL ?? 'admin@freegateway.local'

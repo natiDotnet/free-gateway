@@ -58,6 +58,7 @@ out
 *.sqlite-shm
 *.sqlite-wal
 dev.sqlite
+/packages/db/prisma/.generated
 
 test-output
 # TS incremental build info

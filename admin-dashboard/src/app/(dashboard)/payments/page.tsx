@@ -47,7 +47,7 @@ export default async function PaymentsPage({ searchParams }: Props) {
   const statusFilter =
     params.status && STATUSES.has(params.status) ? params.status : '';
 
-  const all = listPayments();
+  const all = await listPayments();
   const payments = all.filter(
     (p) =>
       (!q || matches(p, q)) && (!statusFilter || p.status === statusFilter)

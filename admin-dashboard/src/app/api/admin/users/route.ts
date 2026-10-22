@@ -19,7 +19,7 @@ export async function GET() {
       { status: 403 }
     );
   }
-  return NextResponse.json({ status: 'success', data: { users: listAdminUsers() } });
+  return NextResponse.json({ status: 'success', data: { users: await listAdminUsers() } });
 }
 
 function errorResponse(err: unknown): NextResponse {
@@ -35,7 +35,7 @@ function errorResponse(err: unknown): NextResponse {
       { status: 400 }
     );
   }
-  if (message.includes('UNIQUE')) {
+  if (message.includes('UNIQUE') || message.includes('P2002')) {
     return NextResponse.json(
       { message: 'A user with this email already exists.' },
       { status: 409 }
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const user = createAdminUser(
+    const user = await createAdminUser(
       {
         email: String(body.email ?? ''),
         name: String(body.name ?? ''),

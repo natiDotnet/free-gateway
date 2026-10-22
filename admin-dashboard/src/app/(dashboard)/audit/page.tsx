@@ -21,7 +21,7 @@ const th =
 
 export default async function AuditPage() {
   const admin = await requirePagePermission('audit.view');
-  const entries = listAuditEntries(200);
+  const entries = await listAuditEntries(200);
 
   return (
     <div className="flex flex-col gap-6">

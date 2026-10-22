@@ -36,13 +36,14 @@ export async function POST(
 
   const { reference } = await params;
   const payment =
-    getPaymentByMerchantReference(reference) ?? getPaymentById(reference);
+    (await getPaymentByMerchantReference(reference)) ??
+    (await getPaymentById(reference));
 
   if (!payment) {
     return NextResponse.json({ message: 'Payment not found' }, { status: 404 });
   }
 
-  createPaymentEvent({
+  await createPaymentEvent({
     paymentId: payment.id,
     eventType: `payment.${payment.status}`,
     provider: payment.provider,
@@ -54,11 +55,11 @@ export async function POST(
   });
 
   // Re-save to bump updated_at (audit touch).
-  updatePaymentStatus(payment.id, payment.status, {
+  await updatePaymentStatus(payment.id, payment.status, {
     providerReference: payment.providerReference ?? undefined,
   });
 
-  recordAudit({
+  await recordAudit({
     action: 'payment.verify',
     actor: admin,
     target: payment.merchantReference,

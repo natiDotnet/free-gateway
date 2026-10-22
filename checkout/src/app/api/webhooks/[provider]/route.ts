@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   getPaymentByMerchantReference,
   getPaymentByProviderReference,
+  findOpenPaymentByAmount,
   updatePaymentStatus,
   updatePaymentProvider,
   createPaymentEvent,
-  listPayments,
   type Payment,
   type PaymentStatus,
 } from '@org/db';
@@ -97,9 +97,10 @@ export async function POST(
   }
 
   // Find payment: prefer provider_reference, then merchant_reference.
-  let payment =
-    (providerReference && getPaymentByProviderReference(providerReference)) ||
-    (reference && getPaymentByMerchantReference(reference));
+  let payment = providerReference
+    ? await getPaymentByProviderReference(providerReference)
+    : undefined;
+  payment ??= reference ? await getPaymentByMerchantReference(reference) : undefined;
 
   if (!payment) {
     console.log(`[webhook:${providerName}] payment not found`, {
@@ -113,16 +114,16 @@ export async function POST(
 
   // Idempotency: only record a new event when status actually changes.
   if (nextStatus !== payment.status) {
-    updatePaymentStatus(payment.id, nextStatus, {
+    await updatePaymentStatus(payment.id, nextStatus, {
       providerReference,
     });
     // Record which provider actually settled this payment.
     if (providerName !== payment.provider) {
-      updatePaymentProvider(payment.id, providerName);
+      await updatePaymentProvider(payment.id, providerName);
     }
   }
 
-  createPaymentEvent({
+  await createPaymentEvent({
     paymentId: payment.id,
     eventType: eventType ?? `payment.${nextStatus}`,
     provider: providerName,
@@ -155,7 +156,7 @@ export async function POST(
  *      pending) — the gateway's hosted checkout tells the customer the exact
  *      amount required for the selected Telebirr payment.
  */
-function handleTelebirrSmsNotify(providerName: string, body: any): NextResponse {
+async function handleTelebirrSmsNotify(providerName: string, body: any): Promise<NextResponse> {
   const text = typeof body.text === 'string' ? body.text : '';
   const transactionNumber =
     typeof body.transaction_number === 'string'
@@ -179,7 +180,7 @@ function handleTelebirrSmsNotify(providerName: string, body: any): NextResponse 
 
   // 1) Idempotency — this transaction number already settled a payment.
   const existingByTxn = transactionNumber
-    ? getPaymentByProviderReference(transactionNumber)
+    ? await getPaymentByProviderReference(transactionNumber)
     : undefined;
   if (existingByTxn?.status === 'success') {
     console.log(`[webhook:${providerName}] duplicate SMS notify ignored`, {
@@ -191,10 +192,11 @@ function handleTelebirrSmsNotify(providerName: string, body: any): NextResponse 
 
   // 2)–4) Reconcile.
   const extractedRef = extractMerchantReference(text);
-  const payment =
-    existingByTxn ??
-    (extractedRef ? getPaymentByMerchantReference(extractedRef) : undefined) ??
-    (amount != null ? findOpenTelebirrPaymentByAmount(amount) : undefined);
+  let payment = existingByTxn;
+  payment ??= extractedRef
+    ? await getPaymentByMerchantReference(extractedRef)
+    : undefined;
+  payment ??= amount != null ? await findOpenTelebirrPaymentByAmount(amount) : undefined;
 
   if (!payment) {
     console.log(`[webhook:${providerName}] could not reconcile SMS notify — recorded nowhere`, {
@@ -208,16 +210,16 @@ function handleTelebirrSmsNotify(providerName: string, body: any): NextResponse 
   const nextStatus = smsStatus ?? payment.status;
 
   if (nextStatus !== payment.status) {
-    updatePaymentStatus(payment.id, nextStatus, {
+    await updatePaymentStatus(payment.id, nextStatus, {
       providerReference: transactionNumber ?? payment.providerReference ?? undefined,
     });
     // Record which provider actually settled this payment.
     if (providerName !== payment.provider) {
-      updatePaymentProvider(payment.id, providerName);
+      await updatePaymentProvider(payment.id, providerName);
     }
   }
 
-  createPaymentEvent({
+  await createPaymentEvent({
     paymentId: payment.id,
     eventType: smsStatus
       ? `payment.${smsStatus}`
@@ -249,15 +251,8 @@ function handleTelebirrSmsNotify(providerName: string, body: any): NextResponse 
  * Prefers `auth_needed` (customer already chose Telebirr on hosted checkout);
  * falls back to `pending`.
  */
-function findOpenTelebirrPaymentByAmount(amount: number): Payment | undefined {
-  const candidates = listPayments().filter(
-    (p) =>
-      p.currency.toUpperCase() === 'ETB' &&
-      (p.status === 'auth_needed' || p.status === 'pending') &&
-      Math.abs(Number(p.amount) - amount) < 0.005
-  );
-  if (candidates.length === 0) return undefined;
-  return candidates.find((p) => p.status === 'auth_needed') ?? candidates[0];
+function findOpenTelebirrPaymentByAmount(amount: number): Promise<Payment | undefined> {
+  return findOpenPaymentByAmount('ETB', amount);
 }
 
 /**

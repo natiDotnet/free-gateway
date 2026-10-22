@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function UsersPage() {
   const admin = await requirePagePermission('users.manage');
-  const users = listAdminUsers();
+  const users = await listAdminUsers();
 
   return (
     <div className="flex flex-col gap-6">

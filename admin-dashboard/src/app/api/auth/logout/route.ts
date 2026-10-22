@@ -9,11 +9,11 @@ export async function POST(request: NextRequest) {
   const token = request.cookies.get(SESSION_COOKIE)?.value;
 
   if (token) {
-    const admin = getAdminUserBySessionToken(token);
+    const admin = await getAdminUserBySessionToken(token);
     if (admin) {
-      recordAudit({ action: 'auth.logout', actor: admin, ip: getClientIp(request) });
+      await recordAudit({ action: 'auth.logout', actor: admin, ip: getClientIp(request) });
     }
-    destroyAdminSession(token);
+    await destroyAdminSession(token);
   }
 
   const response = NextResponse.json({ status: 'success', message: 'Signed out' });

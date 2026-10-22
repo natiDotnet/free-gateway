@@ -22,7 +22,7 @@
       "@/*": ["./src/*"],
       "@org/chapa": ["../packages/chapa/src/lib/chapa.ts"],
       "@org/store": ["../packages/store/src/payment-store.ts"],
-      "@org/db": ["../packages/db/src/index.ts"]
+      "@org/db": ["../packages/db/src/prisma.ts"]
     },
     "outDir": "dist",
     "rootDir": "src",

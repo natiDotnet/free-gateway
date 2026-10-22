@@ -5,9 +5,8 @@ import { useState } from 'react';
 import { ROLE_PERMISSIONS } from '@/lib/ui';
 
 /**
- * Sidebar navigation. This is a client component, so it cannot import
- * `@org/db` (better-sqlite3) — the permission matrix is mirrored in
- * src/lib/ui.ts and kept in sync with packages/db/src/index.ts.
+ * Sidebar navigation. This is a client component, so it cannot import the
+ * server-only Prisma client — permissions are mirrored in src/lib/ui.ts.
  */
 interface NavItem {
   href: string;
@@ -38,8 +37,15 @@ const icon = (path: string) => (
 
 const SECTIONS: NavSection[] = [
   {
-    title: 'Settlement',
+    title: 'Operations',
     items: [
+      {
+        href: '/',
+        label: 'Overview',
+        description: 'Gateway activity',
+        permission: 'payments.list',
+        icon: icon('M3 3v18h18M7 14l4-4 4 4 6-7'),
+      },
       {
         href: '/payments',
         label: 'Payments',
@@ -48,6 +54,13 @@ const SECTIONS: NavSection[] = [
         icon: icon(
           'M2 6.5A2.5 2.5 0 0 1 4.5 4h15A2.5 2.5 0 0 1 22 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 2 17.5v-11Zm1 2.5h18M6 15h4'
         ),
+      },
+      {
+        href: '/analytics',
+        label: 'Analytics',
+        description: 'Payment reports',
+        permission: 'payments.list',
+        icon: icon('M4 19V5m0 14h16M8 15v-4m4 4V7m4 8v-6m4 6V4'),
       },
     ],
   },

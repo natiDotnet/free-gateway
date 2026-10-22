@@ -17,7 +17,7 @@ export async function GET(
 ) {
   const { reference } = await params;
 
-  const payment = getPaymentByMerchantReference(reference);
+  const payment = await getPaymentByMerchantReference(reference);
   if (!payment) {
     return NextResponse.json({ message: 'Payment not found' }, { status: 404 });
   }
@@ -48,14 +48,14 @@ export async function POST(
 ) {
   const { reference } = await params;
 
-  const payment = getPaymentByMerchantReference(reference);
+  const payment = await getPaymentByMerchantReference(reference);
   if (!payment) {
     return NextResponse.json({ message: 'Payment not found' }, { status: 404 });
   }
 
   const verified = payment.status === 'success';
 
-  createPaymentEvent({
+  await createPaymentEvent({
     paymentId: payment.id,
     eventType: `payment.${payment.status}`,
     provider: payment.provider,

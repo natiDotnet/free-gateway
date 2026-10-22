@@ -67,10 +67,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const admin = verifyAdminCredentials(email, String(body.password ?? ''));
+  const admin = await verifyAdminCredentials(email, String(body.password ?? ''));
   if (!admin) {
     recordFailure(throttleKey);
-    recordAudit({
+    await recordAudit({
       action: 'auth.login.failed',
       target: email || '(empty email)',
       ip,
@@ -83,8 +83,8 @@ export async function POST(request: NextRequest) {
 
   failures.delete(throttleKey);
 
-  const { token, expiresAt } = createAdminSession(admin.id);
-  recordAudit({ action: 'auth.login', actor: admin, ip });
+  const { token, expiresAt } = await createAdminSession(admin.id);
+  await recordAudit({ action: 'auth.login', actor: admin, ip });
 
   const response = NextResponse.json({
     status: 'success',

@@ -22,7 +22,7 @@
     "target": "es2022",
     "paths": {
       "@/*": ["./admin-dashboard/src/*", "./checkout/src/*"],
-      "@org/db": ["./packages/db/src/index.ts"],
+      "@org/db": ["./packages/db/src/prisma.ts"],
       "@org/chapa": ["./packages/chapa/src/lib/chapa.ts"],
       "@org/store": ["./packages/store/src/payment-store.ts"]
     }

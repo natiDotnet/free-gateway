@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   createPayment,
-  db,
   getPaymentByMerchantReference,
-  updatePaymentStatus,
+  updatePaymentDetails,
   type CreatePaymentInput,
 } from '@org/db';
 
@@ -54,7 +53,7 @@ export async function POST(request: NextRequest) {
       merchant_reference ?? `pay-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     // Idempotency: avoid creating duplicate orders for the same reference.
-    const existing = getPaymentByMerchantReference(reference);
+    const existing = await getPaymentByMerchantReference(reference);
     if (existing && existing.status !== 'pending') {
       return NextResponse.json(
         {
@@ -88,35 +87,29 @@ export async function POST(request: NextRequest) {
     };
 
     if (existing) {
-      // Reset to pending so the customer can retry safely.
-      updatePaymentStatus(existing.id, 'pending');
-      // Rewrite mutable fields.
-      db.prepare(
-        `UPDATE payments
-         SET amount = @amount, currency = @currency,
-             customer_name = @customerName, customer_email = @customerEmail,
-             customer_phone = @customerPhone, meta = @meta,
-             return_url = @returnUrl, cancel_url = @cancelUrl,
-             notification_url = @notificationUrl, updated_at = @now
-         WHERE merchant_reference = @merchantReference`
-      ).run({
+      const updated = await updatePaymentDetails(existing.id, {
         amount: input.amount,
         currency: input.currency,
         customerName: input.customer?.name ?? null,
         customerEmail: input.customer?.email ?? null,
         customerPhone: input.customer?.phone ?? null,
-        meta: input.meta ? JSON.stringify(input.meta) : null,
+        meta: input.meta ?? null,
         returnUrl: input.returnUrl ?? null,
         cancelUrl: input.cancelUrl ?? null,
         notificationUrl: input.notificationUrl ?? null,
-        now: new Date().toISOString(),
-        merchantReference: reference,
       });
+      if (!updated) {
+        return NextResponse.json(
+          { message: 'A payment for this reference has already started processing' },
+          { status: 409 }
+        );
+      }
     } else {
-      createPayment(input);
+      await createPayment(input);
     }
 
-    const payment = getPaymentByMerchantReference(reference)!;
+    const payment = await getPaymentByMerchantReference(reference);
+    if (!payment) throw new Error('Payment could not be loaded after initialization');
     const checkoutUrl = `${request.nextUrl.origin}/payment/${reference}`;
 
     return NextResponse.json({

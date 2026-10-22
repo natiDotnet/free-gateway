@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
   const keepToken = request.cookies.get(SESSION_COOKIE)?.value;
 
   try {
-    changeOwnPassword(
+    await changeOwnPassword(
       admin.id,
       String(body.currentPassword ?? ''),
       String(body.newPassword ?? ''),

@@ -1,17 +1,18 @@
 # Free Gateway — Payment Gateway Backend (Next.js + Nx)
 
 A backend gateway that accepts Chapa-style payment initialization requests,
-stores them in a **SQLite database**, and processes webhooks from payment
-providers (Chapa, Telebirr, …) to update payment status.
+stores them through **Prisma ORM** (SQLite by default; PostgreSQL and MySQL are
+configurable), and processes webhooks from payment providers (Chapa, Telebirr,
+…) to update payment status.
 
 Built as an Nx monorepo with two Next.js apps and shared libraries:
 
-| Project | Port | Purpose |
-|---------|------|---------|
-| `checkout` | 3000 | Public payment gateway: init, hosted checkout page, verify, webhooks |
-| `admin-dashboard` | 3001 | Admin view: list transactions, server-side verify |
-| `@org/db` | — | Shared SQLite database layer (`better-sqlite3`) |
-| `@org/chapa` | — | Chapa API v2 outbound client |
+| Project           | Port | Purpose                                                              |
+| ----------------- | ---- | -------------------------------------------------------------------- |
+| `checkout`        | 3000 | Public payment gateway: init, hosted checkout page, verify, webhooks |
+| `admin-dashboard` | 3001 | Admin view: list transactions, server-side verify                    |
+| `@org/db`         | —    | Shared Prisma persistence layer (SQLite, PostgreSQL, or MySQL)        |
+| `@org/chapa`      | —    | Chapa API v2 outbound client                                         |
 
 ## Data flow
 
@@ -41,9 +42,11 @@ verification.
 ## API reference
 
 ### POST /api/payments/init
+
 Initialize a payment (Chapa-style payload) and store it in the database.
 
 Body:
+
 ```json
 {
   "amount": 500,
@@ -63,6 +66,7 @@ Body:
 ```
 
 Response:
+
 ```json
 {
   "status": "success",
@@ -82,6 +86,7 @@ Response:
 - Supported currencies: USD, ETB, UGX, DJF.
 
 ### GET /api/payments/[reference]/verify
+
 Server-side verification. Returns the authoritative payment status from the
 database (updated by webhooks).
 
@@ -102,12 +107,14 @@ database (updated by webhooks).
 Only deliver value when `data.status === "success"`.
 
 ### POST /api/payments/[reference]/submit
+
 Called by the gateway's hosted checkout page when the customer submits a
 payment method.
 
 ```json
 { "method": "telebirr", "phone": "+251960724272" }
 ```
+
 - `method`: `telebirr | chapa | card`
 - `telebirr` requires `phone` in international format (validated server-side,
   masked before storage).
@@ -117,14 +124,17 @@ Response sets the payment to `auth_needed` (awaiting the provider) and
 records a `payment.submitted` audit event.
 
 ### POST /api/payments/[reference]/cancel
+
 Marks a pending/awaiting payment as `cancelled` and records an audit event.
 Submitting after cancellation is rejected with `409`.
 
 ### POST /api/webhooks/[provider]
+
 Receives webhooks from providers. `provider` is `chapa` or `telebirr` (or any
 string you configure).
 
 Chapa-style payload:
+
 ```json
 {
   "event": "payment.success",
@@ -140,6 +150,7 @@ Chapa-style payload:
 
 Telebirr SMS notify (forwarded by an SMS gateway — real-world payload, flat,
 no merchant reference):
+
 ```json
 {
   "createdAt": "2026-10-18T15:09:28.707Z",
@@ -157,7 +168,9 @@ no merchant reference):
   "sim": "sim2"
 }
 ```
+
 Telebirr SMS reconciliation order:
+
 1. **Idempotency** — a `transaction_number` that already settled a payment is
    ignored (`Duplicate event`).
 2. **Text reference** — if the payer wrote the order reference (e.g. `ORD-…`
@@ -167,15 +180,17 @@ Telebirr SMS reconciliation order:
    the hosted checkout). Unmatched SMS are acked and logged, never guessed.
 4. The raw SMS payload is stored in `payment_events` (audit log), and the
    payment row records `provider = telebirr` + `provider_reference =
-   DJJ928K0V3`.
+DJJ928K0V3`.
 
 Optional integrity guard — `checkout/.env`:
+
 ```
 # Only accept SMS notifications addressed to this Telebirr account name
 TELEBIRR_ACCOUNT_NAME=TAMRAT
 ```
 
 The endpoint:
+
 1. Normalizes the provider-specific payload into `{ eventType, reference, status }`.
 2. Finds the payment by `provider_reference` or `merchant_reference` (plus the
    Telebirr reconciliation above).
@@ -186,69 +201,41 @@ The endpoint:
 > **Security TODO:** Add webhook signature validation (e.g. verify a Chapa /
 > Telebirr HMAC signature from request headers) before trusting the payload.
 
-### Database schema (`@org/db`)
+### Database provider (`@org/db`)
 
-Stored in `dev.sqlite` at the workspace root (SQLite, WAL mode).
+Prisma owns the models and database access. The default provider is SQLite at
+`dev.sqlite` in the workspace root. Set these variables in the workspace-root
+`.env` to select another provider:
 
-```sql
-payments (
-  id TEXT PRIMARY KEY,
-  merchant_reference TEXT UNIQUE NOT NULL,
-  amount REAL NOT NULL,
-  currency TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending',   -- pending|success|failed|cancelled|incomplete|auth_needed|blocked
-  checkout_url TEXT,
-  provider_reference TEXT UNIQUE,            -- upstream provider txn ref (Chapa/Telebirr)
-  provider TEXT NOT NULL DEFAULT 'chapa',   -- chapa | telebirr | ...
-  customer_name TEXT,
-  customer_email TEXT,
-  customer_phone TEXT,
-  meta TEXT,                                 -- JSON
-  return_url TEXT,
-  cancel_url TEXT,
-  notification_url TEXT,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now'))
-)
+```dotenv
+# Default, local development
+DATABASE_PROVIDER=sqlite
+# DATABASE_URL is optional; defaults to the workspace-root dev.sqlite
 
-payment_events (
-  id TEXT PRIMARY KEY,
-  payment_id TEXT REFERENCES payments(id) ON DELETE CASCADE,
-  event_type TEXT NOT NULL,                  -- payment.success | payment.failed | …
-  provider TEXT NOT NULL,
-  reference TEXT,
-  payload TEXT,                              -- JSON raw webhook body
-  created_at TEXT DEFAULT (datetime('now'))
-)
+# PostgreSQL
+# DATABASE_PROVIDER=postgresql
+# DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DATABASE?schema=public
 
-admin_users (
-  id TEXT PRIMARY KEY,
-  email TEXT UNIQUE NOT NULL,               -- no-case compare
-  name TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'viewer',      -- admin | operator | viewer
-  password_hash TEXT NOT NULL,              -- scrypt:salt:hash
-  is_active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now')),
-  last_login_at TEXT
-)
-
-admin_sessions (
-  token_hash TEXT PRIMARY KEY,              -- SHA-256 of the cookie token
-  user_id TEXT REFERENCES admin_users(id) ON DELETE CASCADE,
-  created_at TEXT DEFAULT (datetime('now')),
-  expires_at TEXT NOT NULL
-)
-
-audit_log (
-  id TEXT PRIMARY KEY,
-  actor_id TEXT, actor_email TEXT, actor_role TEXT,
-  action TEXT NOT NULL,                     -- auth.login | payment.verify | user.create | …
-  target TEXT, detail TEXT,                 -- JSON
-  ip TEXT,
-  created_at TEXT DEFAULT (datetime('now'))
-)
+# MySQL
+# DATABASE_PROVIDER=mysql
+# DATABASE_URL=mysql://USER:PASSWORD@HOST:3306/DATABASE
 ```
+
+The supported values are `sqlite`, `postgresql`, and `mysql`. Run
+`npm run db:generate` after changing the provider or URL to generate a matching
+Prisma client. For a new local database, run `npm run db:push` once to create
+the schema; `npm run db:prepare` combines these two explicit setup steps. Normal
+dev startup only generates the client and never changes the configured database.
+`db:push` does not create migration history and should not be used to update a
+production database.
+
+`packages/db/prisma/schema.prisma` is the shared model definition. A provider-
+specific schema is generated locally and ignored by git. Switching providers
+does not copy data: configure and provision the target database, then use a
+separate migration/export process when existing records must be moved. For
+production deployments, use reviewed Prisma migrations rather than relying on
+`db push` to change schemas automatically. Prisma's read-only `migrate diff`
+can be used to review a proposed change before applying it.
 
 ## Setup
 
@@ -259,15 +246,18 @@ npm install
 
 ### Environment variables
 
-`checkout/.env`:
+Workspace-root `.env`:
+
 ```
-DATABASE_PATH=/absolute/path/to/dev.sqlite   # optional; defaults to workspace-root dev.sqlite
+DATABASE_PROVIDER=sqlite                    # sqlite (default), postgresql, or mysql
+# DATABASE_URL=...                           # required for PostgreSQL/MySQL
 GATEWAY_SIMULATE_PROVIDERS=true              # demo only: auto-dispatch a simulated provider webhook after submit
 GATEWAY_SIMULATE_DELAY_MS=2000               # demo delay before the simulated webhook fires
 PORT=3000
 ```
 
 `admin-dashboard/.env`:
+
 ```
 PORT=3001
 
@@ -281,22 +271,23 @@ ADMIN_SESSION_TTL_HOURS=8       # admin session lifetime (default 8)
 COOKIE_SECURE=false             # set true when serving admin over HTTPS
 ```
 
-The database path is resolved automatically to the workspace root (where
-`nx.json` lives), so both apps share the same `dev.sqlite` file regardless of
-which directory each dev server runs from.
+For SQLite, the default database path is the workspace-root `dev.sqlite`, so
+both apps share the same database regardless of their working directory. For
+PostgreSQL or MySQL, both apps use the configured `DATABASE_URL`.
 
 ## Admin console — authentication & roles (`admin-dashboard`)
 
 The dashboard at `http://localhost:3001` is a full staff console protected
 by session auth and role-based access control (RBAC):
 
-| Role | Permissions |
-|---|---|
+| Role              | Permissions                                                      |
+| ----------------- | ---------------------------------------------------------------- |
 | **Administrator** | everything: payments + verify/cancel, **user management**, audit |
-| **Operator** | payments + verify/cancel, audit |
-| **Viewer** | read-only payments |
+| **Operator**      | payments + verify/cancel, audit                                  |
+| **Viewer**        | read-only payments                                               |
 
 Architecture:
+
 - **Sessions** — opaque 256-bit tokens in an `HttpOnly` `SameSite=Lax` cookie;
   only the SHA-256 hash is stored (`admin_sessions`), TTL via
   `ADMIN_SESSION_TTL_HOURS`. Passwords are scrypt-hashed with per-user salts
@@ -305,7 +296,7 @@ Architecture:
 - **`src/proxy.ts` (edge)** — cheap gate: no session cookie → redirect to
   `/login?next=…` (pages) or `401` (API), plus security headers
   (`X-Frame-Options: DENY`, `nosniff`, referrer/permissions policy). The edge
-  layer deliberately cannot touch SQLite; real validation happens in the
+  layer deliberately does not connect to the database; real validation happens in the
   Node runtime.
 - **Server guards** — every dashboard layout/page calls
   `requirePagePermission(...)`; every API route re-checks
@@ -316,12 +307,31 @@ Architecture:
   `user.create` / `user.role_change` / `user.activate` / `user.deactivate` /
   `user.reset_password` / `account.password_change` with actor, target,
   detail and IP. Password reset or deactivation revokes sessions instantly.
-- **Pages** — `/login`, `/payments` (search, status filter, stats tiles,
+- **Pages** — `/login`, `/` (seven-day payment overview), `/payments` (search, status filter, stats tiles,
   quick verify/cancel), `/payments/[reference]` (amount, customer, metadata,
-  provider event timeline, actions), `/users` (admin-only staff management),
-  `/audit`, `/account` (self-service password change).
+  provider event timeline, actions), `/analytics` (UTC date/provider/status
+  filters and payment-only period comparisons), `/users` (admin-only staff
+  management), `/audit`, `/account` (self-service password change).
+
+### Backend capability boundaries
+
+The admin console reports only data persisted by the current backend. Payment
+analytics and payment lifecycle events are available; API request logs, API
+key records, provider health/latency metrics, webhook delivery attempts, and
+gateway resource metrics are not currently stored or exposed. The overview
+marks health telemetry as unavailable rather than estimating it. Analytics
+keeps payment values grouped by currency and does not provide report downloads
+because the current permission model has no dedicated export authorization.
+
+To support the remaining gateway workflows, the backend needs authenticated,
+role-authorized contracts for API key issuance/rotation/revocation, paginated
+and redacted request logs, provider health samples, webhook delivery history
+and retry capability, and explicit report-export permissions. Store only
+redacted request/provider data, audit sensitive operations, and return
+server-side pagination and aggregation for large datasets.
 
 Login with curl:
+
 ```bash
 # sign in (cookie jar) and call the API
 curl -s -c admin.jar -X POST http://localhost:3001/api/auth/login \
@@ -338,11 +348,13 @@ TOTP 2FA for administrators.
 ## Run
 
 Terminal 1 — checkout gateway:
+
 ```bash
 npm run dev:checkout        # http://localhost:3000
 ```
 
 Terminal 2 — admin dashboard:
+
 ```bash
 npm run dev:admin-dashboard # http://localhost:3001
 ```
@@ -419,8 +431,8 @@ npm run build       # build both Next.js apps
 
 ## Production notes
 
-- Swap SQLite for PostgreSQL (or another SQL database) for multi-instance
-  deployments; `@org/db` is the single integration point.
+- For production, provision PostgreSQL or MySQL and set `DATABASE_PROVIDER` and
+  `DATABASE_URL`; use reviewed Prisma migrations rather than `db push`.
 - Enable webhook signature validation in `api/webhooks/[provider]/route.ts`.
 - Replace the in-memory retry/payment page logic with your real provider SDKs
   (Chapa, Telebirr, etc.) for the actual redirect/checkout step.

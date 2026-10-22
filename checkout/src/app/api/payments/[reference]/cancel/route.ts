@@ -17,7 +17,7 @@ export async function POST(
 ) {
   const { reference } = await params;
 
-  const payment = getPaymentByMerchantReference(reference);
+  const payment = await getPaymentByMerchantReference(reference);
   if (!payment) {
     return NextResponse.json({ message: 'Payment not found' }, { status: 404 });
   }
@@ -28,10 +28,10 @@ export async function POST(
       : payment.status;
 
   if (nextStatus !== payment.status) {
-    updatePaymentStatus(payment.id, nextStatus);
+    await updatePaymentStatus(payment.id, nextStatus);
   }
 
-  createPaymentEvent({
+  await createPaymentEvent({
     paymentId: payment.id,
     eventType: `payment.${nextStatus}`,
     provider: payment.provider,

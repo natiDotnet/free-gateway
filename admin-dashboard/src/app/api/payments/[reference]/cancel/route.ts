@@ -33,7 +33,8 @@ export async function POST(
 
   const { reference } = await params;
   const payment =
-    getPaymentByMerchantReference(reference) ?? getPaymentById(reference);
+    (await getPaymentByMerchantReference(reference)) ??
+    (await getPaymentById(reference));
 
   if (!payment) {
     return NextResponse.json({ message: 'Payment not found' }, { status: 404 });
@@ -55,11 +56,11 @@ export async function POST(
     );
   }
 
-  updatePaymentStatus(payment.id, 'cancelled', {
+  await updatePaymentStatus(payment.id, 'cancelled', {
     providerReference: payment.providerReference ?? undefined,
   });
 
-  createPaymentEvent({
+  await createPaymentEvent({
     paymentId: payment.id,
     eventType: 'payment.cancelled',
     provider: 'admin',
@@ -71,7 +72,7 @@ export async function POST(
     },
   });
 
-  recordAudit({
+  await recordAudit({
     action: 'payment.cancel',
     actor: admin,
     target: payment.merchantReference,

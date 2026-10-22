@@ -29,7 +29,7 @@ export async function POST(
 ) {
   const { reference } = await params;
 
-  const payment = getPaymentByMerchantReference(reference);
+  const payment = await getPaymentByMerchantReference(reference);
   if (!payment) {
     return NextResponse.json({ message: 'Payment not found' }, { status: 404 });
   }
@@ -75,7 +75,7 @@ export async function POST(
 
   const provider = method === 'telebirr' ? 'telebirr' : 'chapa';
 
-  createPaymentEvent({
+  await createPaymentEvent({
     paymentId: payment.id,
     eventType: 'payment.submitted',
     provider,
@@ -88,7 +88,7 @@ export async function POST(
   });
 
   // Awaiting the provider's asynchronous confirmation via webhook.
-  updatePaymentStatus(payment.id, 'auth_needed');
+  await updatePaymentStatus(payment.id, 'auth_needed');
 
   if (SIMULATE) {
     scheduleSimulatedWebhook(request, payment, provider);

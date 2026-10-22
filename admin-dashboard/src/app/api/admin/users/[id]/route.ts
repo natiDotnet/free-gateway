@@ -32,7 +32,7 @@ export async function PATCH(
   }
 
   const { id } = await params;
-  const target = findAdminUserById(id);
+  const target = await findAdminUserById(id);
   if (!target) {
     return NextResponse.json({ message: 'User not found' }, { status: 404 });
   }
@@ -59,7 +59,7 @@ export async function PATCH(
           { status: 400 }
         );
       }
-      updateAdminUserRole(target.id, body.role, admin);
+      await updateAdminUserRole(target.id, body.role, admin);
     }
 
     if (body.isActive !== undefined) {
@@ -69,11 +69,11 @@ export async function PATCH(
           { status: 400 }
         );
       }
-      setAdminUserActive(target.id, body.isActive, admin);
+      await setAdminUserActive(target.id, body.isActive, admin);
     }
 
     if (body.newPassword !== undefined) {
-      resetAdminPassword(target.id, String(body.newPassword), admin);
+      await resetAdminPassword(target.id, String(body.newPassword), admin);
     }
   } catch (err) {
     const message = String((err as Error)?.message ?? 'UNKNOWN');
@@ -87,6 +87,6 @@ export async function PATCH(
   return NextResponse.json({
     status: 'success',
     message: 'User updated',
-    data: { user: findAdminUserById(target.id) },
+    data: { user: await findAdminUserById(target.id) },
   });
 }

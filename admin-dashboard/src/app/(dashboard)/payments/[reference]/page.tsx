@@ -20,10 +20,11 @@ export default async function PaymentDetailPage({ params }: Props) {
   const { reference } = await params;
 
   const payment =
-    getPaymentByMerchantReference(reference) ?? getPaymentById(reference);
+    (await getPaymentByMerchantReference(reference)) ??
+    (await getPaymentById(reference));
   if (!payment) notFound();
 
-  const events = getPaymentEventsByPaymentId(payment.id);
+  const events = await getPaymentEventsByPaymentId(payment.id);
   const openable = OPEN_STATUSES.includes(payment.status);
 
   return (

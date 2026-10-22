@@ -41,7 +41,7 @@ export function actionChip(action: string): string {
 }
 
 /** Client-side mirror of the role permission matrix from
- * packages/db/src/index.ts (kept in sync manually — the sidebar is a
+ * packages/db/src/prisma.ts (kept in sync manually — the sidebar is a
  * client component and cannot import that Node-only module). */
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
   admin: [
