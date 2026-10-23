@@ -9,6 +9,7 @@ import {
   type Payment,
   type PaymentStatus,
 } from '@org/db';
+import { notifyPaymentStatusChange, withGatewayLog, type GatewayRequestMeta } from '@/lib/gateway';
 
 /**
  * POST /api/webhooks/[provider]
@@ -40,9 +41,20 @@ import {
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ provider: string }> }
+  ctx: { params: Promise<{ provider: string }> }
 ) {
-  const { provider } = await params;
+  return withGatewayLog(request, 'webhooks', async (meta) => {
+    const { provider } = await ctx.params;
+    return handleProviderWebhook(request, provider, meta);
+  });
+}
+
+async function handleProviderWebhook(
+  request: NextRequest,
+  provider: string,
+  meta: GatewayRequestMeta
+): Promise<NextResponse> {
+  void request;
 
   let body: any;
   try {
@@ -57,7 +69,7 @@ export async function POST(
 
   // ----- Telebirr SMS-parsed notify (no merchant ref, flat payload) -----
   if (providerName === 'telebirr' && (body.transaction_number || body.text)) {
-    return handleTelebirrSmsNotify(providerName, body);
+    return handleTelebirrSmsNotify(providerName, body, meta);
   }
 
   // ------------------------------------------------------------------
@@ -103,12 +115,14 @@ export async function POST(
   payment ??= reference ? await getPaymentByMerchantReference(reference) : undefined;
 
   if (!payment) {
+    meta.errorCode = meta.errorCode ?? 'not_found';
     console.log(`[webhook:${providerName}] payment not found`, {
       reference,
       providerReference,
     });
     return NextResponse.json({ message: 'Event received' }, { status: 200 });
   }
+  meta.merchantReference = payment.merchantReference;
 
   const nextStatus = status ?? payment.status;
 
@@ -121,6 +135,12 @@ export async function POST(
     if (providerName !== payment.provider) {
       await updatePaymentProvider(payment.id, providerName);
     }
+    // Outbound merchant notification (notification_url), recorded with attempt.
+    await notifyPaymentStatusChange(
+      payment.id,
+      eventType ?? `payment.${nextStatus}`,
+      payment.status
+    );
   }
 
   await createPaymentEvent({
@@ -156,7 +176,11 @@ export async function POST(
  *      pending) — the gateway's hosted checkout tells the customer the exact
  *      amount required for the selected Telebirr payment.
  */
-async function handleTelebirrSmsNotify(providerName: string, body: any): Promise<NextResponse> {
+async function handleTelebirrSmsNotify(
+  providerName: string,
+  body: any,
+  meta: GatewayRequestMeta
+): Promise<NextResponse> {
   const text = typeof body.text === 'string' ? body.text : '';
   const transactionNumber =
     typeof body.transaction_number === 'string'
@@ -199,6 +223,7 @@ async function handleTelebirrSmsNotify(providerName: string, body: any): Promise
   payment ??= amount != null ? await findOpenTelebirrPaymentByAmount(amount) : undefined;
 
   if (!payment) {
+    meta.errorCode = meta.errorCode ?? 'not_found';
     console.log(`[webhook:${providerName}] could not reconcile SMS notify — recorded nowhere`, {
       transaction_number: transactionNumber,
       amount,
@@ -206,6 +231,7 @@ async function handleTelebirrSmsNotify(providerName: string, body: any): Promise
     });
     return NextResponse.json({ message: 'Event received' }, { status: 200 });
   }
+  meta.merchantReference = payment.merchantReference;
 
   const nextStatus = smsStatus ?? payment.status;
 
@@ -217,6 +243,12 @@ async function handleTelebirrSmsNotify(providerName: string, body: any): Promise
     if (providerName !== payment.provider) {
       await updatePaymentProvider(payment.id, providerName);
     }
+    // Outbound merchant notification (notification_url), recorded with attempt.
+    await notifyPaymentStatusChange(
+      payment.id,
+      smsStatus ? `payment.${smsStatus}` : `payment.${payment.status}`,
+      payment.status
+    );
   }
 
   await createPaymentEvent({

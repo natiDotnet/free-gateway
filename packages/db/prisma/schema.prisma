@@ -23,12 +23,18 @@ model Payment {
   returnUrl         String?        @map("return_url")
   cancelUrl         String?        @map("cancel_url")
   notificationUrl   String?        @map("notification_url")
+  /// UTC calendar day of createdAt ("YYYY-MM-DD"). Groupable across
+  /// sqlite/postgresql/mysql for daily aggregates.
+  day               String         @default("")
   createdAt         String         @map("created_at")
   updatedAt         String         @map("updated_at")
   events            PaymentEvent[]
+  deliveries        WebhookDelivery[]
 
   @@index([status], map: "idx_payments_status")
   @@index([provider], map: "idx_payments_provider")
+  @@index([day], map: "idx_payments_day")
+  @@index([createdAt], map: "idx_payments_created")
   @@map("payments")
 }
 
@@ -86,5 +92,89 @@ model AuditLog {
   createdAt String   @map("created_at")
 
   @@index([createdAt], map: "idx_audit_log_created")
+  @@index([action], map: "idx_audit_log_action")
   @@map("audit_log")
+}
+
+/// API credentials that authenticate merchant calls to the gateway.
+/// Only the SHA-256 hash of the secret is stored; the plaintext secret is
+/// returned exactly once at creation/rotation time.
+model ApiKey {
+  id             String    @id
+  name           String
+  /// Public identifier prefix, e.g. "fgk_a1b2c3d4" — safe to display.
+  prefix         String    @unique
+  /// SHA-256 hex digest of the full secret.
+  secretHash     String    @unique @map("secret_hash")
+  /// Last 4 characters of the secret body, for identification only.
+  fingerprint    String    @default("0000")
+  scopes         String    @default("[]")
+  status         String    @default("active")
+  createdById    String?   @map("created_by_id")
+  createdByEmail String?   @map("created_by_email")
+  createdAt      String    @map("created_at")
+  updatedAt      String    @map("updated_at")
+  lastUsedAt     String?   @map("last_used_at")
+  expiresAt      String?   @map("expires_at")
+  revokedAt      String?   @map("revoked_at")
+  revokedBy      String?   @map("revoked_by")
+  rotatedFromId  String?   @map("rotated_from_id")
+  rotatedToId    String?   @map("rotated_to_id")
+
+  @@index([status], map: "idx_api_keys_status")
+  @@index([createdAt], map: "idx_api_keys_created")
+  @@map("api_keys")
+}
+
+/// One gateway API request (checkout app routes). Stores only sanitized,
+/// non-sensitive fields; no headers, no request bodies, no query values.
+model RequestLog {
+  id                String   @id
+  correlationId     String   @map("correlation_id")
+  method            String
+  /// Request path without query string, e.g. "/api/payments/init".
+  path              String
+  /// Truncated (<=300 chars) sanitized query string, opaque values only.
+  query             String?
+  statusCode        Int      @map("status_code")
+  durationMs        Int      @map("duration_ms")
+  ip                String?
+  userAgent         String?  @map("user_agent")
+  apiKeyId          String?  @map("api_key_id")
+  apiKeyPrefix      String?  @map("api_key_prefix")
+  /// Merchant reference when the route resolved one.
+  merchantReference String?  @map("merchant_reference")
+  /// Short failure classification, e.g. "validation", "unauthorized".
+  errorCode         String?  @map("error_code")
+  createdAt         String   @map("created_at")
+
+  @@index([createdAt], map: "idx_request_logs_created")
+  @@index([statusCode], map: "idx_request_logs_status")
+  @@index([correlationId], map: "idx_request_logs_correlation")
+  @@index([merchantReference], map: "idx_request_logs_merchant_ref")
+  @@map("request_logs")
+}
+
+/// Outbound payment-status webhook deliveries to a payment's
+/// notification_url. Retry/attempt history lives in the counts below;
+/// payloads carry no payment credentials.
+model WebhookDelivery {
+  id             String    @id
+  paymentId      String?   @map("payment_id")
+  eventType      String    @map("event_type")
+  /// Destination URL. Displayed masked in the dashboard.
+  destinationUrl String    @map("destination_url")
+  status         String    @default("pending")
+  attempts       Int       @default(0)
+  responseStatus Int?      @map("response_status")
+  responseError  String?   @map("response_error")
+  nextRetryAt    String?   @map("next_retry_at")
+  lastAttemptAt  String?   @map("last_attempt_at")
+  createdAt      String    @map("created_at")
+  payment        Payment?  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId], map: "idx_webhook_deliveries_payment")
+  @@index([status], map: "idx_webhook_deliveries_status")
+  @@index([createdAt], map: "idx_webhook_deliveries_created")
+  @@map("webhook_deliveries")
 }

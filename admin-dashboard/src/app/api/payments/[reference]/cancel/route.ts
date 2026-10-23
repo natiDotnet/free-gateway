@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   can,
   createPaymentEvent,
+  deliverPaymentNotification,
   getPaymentByMerchantReference,
   getPaymentById,
   recordAudit,
@@ -59,6 +60,12 @@ export async function POST(
   await updatePaymentStatus(payment.id, 'cancelled', {
     providerReference: payment.providerReference ?? undefined,
   });
+
+  // Fire the merchant's notification_url for the cancelled status (recorded
+  // as a webhook delivery attempt). Best-effort — failures are not thrown.
+  await deliverPaymentNotification(payment.id, 'payment.cancelled', payment.status, {
+    timeoutMs: 4000,
+  }).catch(() => undefined);
 
   await createPaymentEvent({
     paymentId: payment.id,

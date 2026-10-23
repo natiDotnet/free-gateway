@@ -56,11 +56,30 @@ const SECTIONS: NavSection[] = [
         ),
       },
       {
+        href: '/webhooks',
+        label: 'Webhooks',
+        description: 'Deliveries & events',
+        permission: 'payments.list',
+        icon: icon('M3 11.5a8 8 0 0 1 16 0v5h-3m-13 0H9v5H3v-5Zm6 5a4 4 0 0 0 8 0'),
+      },
+    ],
+  },
+  {
+    title: 'Insights',
+    items: [
+      {
         href: '/analytics',
         label: 'Analytics',
         description: 'Payment reports',
         permission: 'payments.list',
         icon: icon('M4 19V5m0 14h16M8 15v-4m4 4V7m4 8v-6m4 6V4'),
+      },
+      {
+        href: '/logs',
+        label: 'Request logs',
+        description: 'API traffic',
+        permission: 'logs.view',
+        icon: icon('M4 6h16M4 10h16M4 14h10M4 18h7'),
       },
     ],
   },
@@ -80,12 +99,30 @@ const SECTIONS: NavSection[] = [
     title: 'Administration',
     items: [
       {
+        href: '/keys',
+        label: 'API keys',
+        description: 'Merchant credentials',
+        permission: 'keys.manage',
+        icon: icon(
+          'M15 7a4 4 0 1 0-3.9 5H11l-1 3-3 .5V19h3l7-7.5A4 4 0 0 0 15 7Zm2 2h.01'
+        ),
+      },
+      {
         href: '/users',
         label: 'Users & roles',
         description: 'Staff access',
         permission: 'users.manage',
         icon: icon(
           'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm7 10v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75'
+        ),
+      },
+      {
+        href: '/health',
+        label: 'System health',
+        description: 'Probes & config',
+        permission: 'logs.view',
+        icon: icon(
+          'M3 12h4l2-5 4 10 2-5h6M12 3v2m0 14v2'
         ),
       },
     ],
@@ -115,9 +152,9 @@ interface SidebarUser {
 }
 
 const ROLE_CHIP: Record<string, string> = {
-  admin: 'bg-purple-400/20 text-purple-200 ring-purple-400/30',
-  operator: 'bg-sky-400/20 text-sky-200 ring-sky-400/30',
-  viewer: 'bg-slate-400/20 text-slate-200 ring-slate-400/30',
+  admin: 'bg-badge-auth-needed text-badge-auth-needed-foreground',
+  operator: 'bg-badge-partial-refund text-badge-partial-refund-foreground',
+  viewer: 'bg-badge-cancelled text-badge-cancelled-foreground',
 };
 
 export default function DashboardSidebar({ user }: { user: SidebarUser }) {
@@ -146,7 +183,7 @@ export default function DashboardSidebar({ user }: { user: SidebarUser }) {
         type="button"
         aria-label="Open navigation"
         onClick={() => setOpen(true)}
-        className="fixed left-4 top-4 z-50 inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm lg:hidden"
+        className="fixed left-4 top-4 z-50 inline-flex h-10 w-10 items-center justify-center card text-gray-primary  lg:hidden"
       >
         <svg
           viewBox="0 0 24 24"
@@ -162,25 +199,25 @@ export default function DashboardSidebar({ user }: { user: SidebarUser }) {
 
       {open && (
         <div
-          className="fixed inset-0 z-30 bg-slate-900/50 lg:hidden"
+          className="fixed inset-0 z-30 bg-secondary/60 lg:hidden"
           onClick={() => setOpen(false)}
         />
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col bg-gradient-to-b from-slate-900 to-slate-800 text-slate-200 transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 flex w-[284px] flex-col border-r border-gray-border bg-white text-gray-primary transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <div className="flex items-center gap-3 border-b border-white/10 px-5 py-4">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-sm font-black text-emerald-300">
+        <div className="flex items-center gap-3 border-b border-gray-border px-5 py-4">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-bold tracking-tight text-secondary">
             FG
           </span>
           <div className="min-w-0">
-            <strong className="block text-[15px] font-semibold tracking-tight">
+            <strong className="block text-[15px] font-semibold tracking-tight text-secondary">
               FreeGateway
             </strong>
-            <span className="block text-[11px] text-slate-400">
+            <span className="block text-[11px] text-gray-secondary">
               Admin console
             </span>
           </div>
@@ -188,7 +225,7 @@ export default function DashboardSidebar({ user }: { user: SidebarUser }) {
             type="button"
             aria-label="Close navigation"
             onClick={() => setOpen(false)}
-            className="ml-auto hidden h-8 w-8 items-center justify-center rounded-lg text-xl leading-none text-slate-400 hover:text-white lg:hidden"
+            className="ml-auto hidden h-8 w-8 items-center justify-center rounded-lg text-xl leading-none text-gray-secondary hover:text-secondary lg:hidden"
           >
             ×
           </button>
@@ -202,7 +239,7 @@ export default function DashboardSidebar({ user }: { user: SidebarUser }) {
             if (items.length === 0) return null;
             return (
               <div key={section.title} className="mb-6">
-                <span className="block px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                <span className="block px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-secondary">
                   {section.title}
                 </span>
                 {items.map((item) => {
@@ -214,15 +251,13 @@ export default function DashboardSidebar({ user }: { user: SidebarUser }) {
                       key={item.href}
                       href={item.href}
                       onClick={() => setOpen(false)}
-                      className={`mb-0.5 flex items-center gap-3 rounded-xl border-l-[3px] border-transparent px-3 py-2 text-slate-300 transition hover:bg-white/10 hover:text-white ${
-                        active
-                          ? 'bg-emerald-500/15 text-white'
-                          : ''
-                      } ${active ? 'border-emerald-400' : ''}`}
+                      className={`mb-0.5 flex items-center gap-3 rounded-xl px-3 py-2 transition hover:bg-nav-hover ${
+                        active ? 'bg-nav-hover text-secondary' : ''
+                      }`}
                     >
                       <span
                         className={
-                          active ? 'text-emerald-300' : 'text-slate-400'
+                          active ? 'text-primary' : 'text-gray-secondary'
                         }
                       >
                         {item.icon}
@@ -231,7 +266,7 @@ export default function DashboardSidebar({ user }: { user: SidebarUser }) {
                         <strong className="text-sm font-medium">
                           {item.label}
                         </strong>
-                        <em className="text-[11px] not-italic text-slate-500">
+                        <em className="text-[11px] not-italic text-gray-secondary">
                           {item.description}
                         </em>
                       </span>
@@ -243,20 +278,20 @@ export default function DashboardSidebar({ user }: { user: SidebarUser }) {
           })}
         </nav>
 
-        <div className="border-t border-white/10 p-4">
+        <div className="border-t border-gray-border p-4">
           <div className="mb-3 flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-sm font-bold text-emerald-200">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-bold text-primary">
               {user.name.slice(0, 1).toUpperCase()}
             </div>
             <div className="min-w-0 flex flex-col">
-              <strong className="truncate text-sm font-medium">
+              <strong className="truncate text-sm font-medium text-secondary">
                 {user.name}
               </strong>
-              <span className="truncate text-[11px] text-slate-400">
+              <span className="truncate text-[11px] text-gray-secondary">
                 {user.email}
               </span>
               <span
-                className={`mt-1 inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ${
+                className={`mt-1 inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
                   ROLE_CHIP[user.role] ?? ROLE_CHIP.viewer
                 }`}
               >
@@ -268,7 +303,7 @@ export default function DashboardSidebar({ user }: { user: SidebarUser }) {
             type="button"
             onClick={handleLogout}
             disabled={leaving}
-            className="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-slate-200 transition hover:border-transparent hover:bg-rose-500/20 hover:text-rose-200 disabled:opacity-55"
+            className="w-full btn btn-secondary"
           >
             {leaving ? 'Signing out…' : 'Sign out'}
           </button>

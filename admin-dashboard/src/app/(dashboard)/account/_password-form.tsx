@@ -3,7 +3,7 @@
 import { useState } from 'react';
 
 const input =
-  'rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-emerald-500/60';
+  'field';
 
 export default function PasswordChangeForm() {
   const [current, setCurrent] = useState('');
@@ -61,18 +61,18 @@ export default function PasswordChangeForm() {
   return (
     <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-3">
       {error && (
-        <div className="rounded-lg border border-rose-300 bg-rose-50 px-3.5 py-2.5 text-sm text-rose-900">
+        <div className="rounded-lg border border-badge-failed bg-badge-failed px-3.5 py-2.5 text-sm text-badge-failed-foreground">
           {error}
         </div>
       )}
       {okMessage && (
-        <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3.5 py-2.5 text-sm text-emerald-900">
+        <div className="rounded-lg border border-badge-success bg-badge-success px-3.5 py-2.5 text-sm text-badge-success-foreground">
           {okMessage}
         </div>
       )}
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-semibold text-slate-600">
+        <span className="text-xs font-semibold text-gray-primary">
           Current password
         </span>
         <input
@@ -85,7 +85,7 @@ export default function PasswordChangeForm() {
         />
       </label>
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-semibold text-slate-600">
+        <span className="text-xs font-semibold text-gray-primary">
           New password (min 10 chars)
         </span>
         <input
@@ -99,7 +99,7 @@ export default function PasswordChangeForm() {
         />
       </label>
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-semibold text-slate-600">
+        <span className="text-xs font-semibold text-gray-primary">
           Confirm new password
         </span>
         <input
@@ -114,7 +114,7 @@ export default function PasswordChangeForm() {
       <button
         type="submit"
         disabled={busy}
-        className="mt-1 inline-flex w-fit items-center rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-teal-600 disabled:pointer-events-none disabled:opacity-55"
+        className="mt-1 w-fit btn btn-primary"
       >
         {busy ? 'Updating…' : 'Update password'}
       </button>

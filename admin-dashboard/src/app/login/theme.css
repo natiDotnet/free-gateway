@@ -1,0 +1,261 @@
+/*
+ * Design tokens for the admin login page (see LOGIN-DESIGN-SPEC.md for
+ * measured values and provenance). Imported by ./global.css so the tokens
+ * are centralized; they are namespaced (primary / gray-* / secondary) and
+ * do not collide with the dashboard's slate/emerald palette.
+ */
+
+/* ---- Inter Tight (variable, weight 100–900) — original files ---- */
+@font-face {
+  font-family: 'Inter Tight';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./fonts/inter-tight-latin.woff2') format('woff2');
+  unicode-range: U+00??, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Inter Tight';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./fonts/inter-tight-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* Metric fallback so layout holds while/if the webfont is unavailable */
+@font-face {
+  font-family: 'Inter Tight Fallback';
+  src: local('Arial');
+  ascent-override: 100.51%;
+  descent-override: 25.03%;
+  line-gap-override: 0%;
+  size-adjust: 96.39%;
+}
+
+@theme {
+  /* ---- typography ---- */
+  --font-primary: 'Inter Tight', 'Inter Tight Fallback', sans-serif;
+
+  --font-size-2xs: 0.625rem; /* 10px */
+  --font-size-xs: 0.75rem; /* 12px */
+  --font-size-sm: 0.875rem; /* 14px */
+  --font-size-base: 1rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem; /* 30px */
+
+  --line-height-2-5: 0.625rem; /* 10px */
+  --line-height-3: 0.75rem; /* 12px */
+  --line-height-3-5: 0.875rem; /* 14px */
+  --line-height-4: 1rem; /* 16px */
+  --line-height-5: 1.25rem; /* 20px */
+  --line-height-6: 1.5rem; /* 24px */
+
+  /* radius scale — mirrors the reference: sm 4, md 6, lg 8, xl 12, 2xl 16, plus 5px step */
+  --radius-5: 0.3125rem; /* 5px */
+
+  /* ---- colors ---- */
+  --color-background: #f4f5f9;
+  --color-foreground: #000000;
+  --color-primary: #7dc400;
+  --color-primary-alt: #7dc242;
+  --color-secondary: #0d1b34;
+  --color-blue-dark: #0f2840;
+  --color-nav-hover: #f0fde3;
+  --color-dark-green: #00a12b;
+  --color-gray-primary: #59647a;
+  --color-gray-secondary: #8792a3;
+  --color-gray-border: #e4e8ed;
+  --color-gray-background: #f4f5f9;
+  --color-gray-disabled: #ccd0da;
+  --color-gray-background-alt: #f8f9fb;
+  --color-button-disabled: #d9d9d9;
+  --color-badge-failed: #fde2e2;
+  --color-badge-failed-foreground: #9a0000;
+
+  /* status badge palette (same keys as the payment statuses) */
+  --color-badge-success: #e1fde2;
+  --color-badge-success-foreground: #007135;
+  --color-badge-cancelled: #f3f3f3;
+  --color-badge-cancelled-foreground: #5a5a5a;
+  --color-badge-pending: #fff9e0;
+  --color-badge-pending-foreground: #9a7400;
+  --color-badge-processing: #ecf56d;
+  --color-badge-processing-foreground: #70744b;
+  --color-badge-incomplete: #fdf4e6;
+  --color-badge-incomplete-foreground: #8b4c00;
+  --color-badge-auth-needed: #f0e8ff;
+  --color-badge-auth-needed-foreground: #5b00a3;
+  --color-badge-otp-required: #ffe3ff;
+  --color-badge-otp-required-foreground: #f52e9d;
+  --color-badge-partial-refund: #e8f5ff;
+  --color-badge-partial-refund-foreground: #005c99;
+  --color-badge-fully-refunded: #e0f7f5;
+  --color-badge-fully-refunded-foreground: #00665c;
+  --color-badge-blocked: #ffe6e6;
+  --color-badge-blocked-foreground: #b30000;
+  --color-badge-refund-initiated: #e8f5ff;
+  --color-badge-refund-initiated-foreground: #005c99;
+
+  /* misc / alerts */
+  --color-dark-green: #00a12b;
+  --color-progress-bar: #0b9331;
+  --color-misc-danger: #ff0000;
+  --color-misc-danger-bg: #f4dbdb;
+  --color-misc-disabled-text: #7b949b;
+  --color-misc-disabled-bg: #7b949b24;
+
+  /* ---- shadows ---- */
+  --shadow-elevated: 0 6px 40px #d6d9e080;
+  --shadow-card: 0px 4px 33.1px 0px #0000000d;
+}
+
+/* ---- typography utilities (sizes + line heights as on the reference) ---- */
+@utility text-h1 {
+  font-size: var(--font-size-3xl);
+  line-height: 2.5rem;
+  font-weight: 700;
+}
+@utility text-h2 {
+  font-size: var(--font-size-2xl);
+  line-height: var(--line-height-6);
+  font-weight: 700;
+}
+@utility text-b1 {
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-6);
+  font-weight: 400;
+}
+@utility text-b2 {
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-5);
+  font-weight: 400;
+}
+
+/* Shared card surface for dashboard panels (reference radius: rounded-lg) */
+@utility card {
+  border: 1px solid var(--color-gray-border);
+  background-color: #fff;
+  border-radius: var(--radius-lg);
+}
+
+/* Shared component recipes for the dashboard (buttons, fields, selects) —
+   measured from dashboard.chapa.global: buttons rounded-sm (4px, small 5px),
+   inputs rounded-md (6px), disabled = solid #d9d9d9 */
+@layer components {
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 40px;
+    border-radius: var(--radius-sm);
+    padding: 0 16px;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+  .btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgb(125 196 0 / 0.35);
+  }
+  .btn:disabled {
+    background-color: var(--color-button-disabled);
+    color: var(--color-secondary);
+    pointer-events: none;
+  }
+  .btn-primary {
+    background-color: var(--color-primary);
+    color: #fff;
+  }
+  .btn-primary:hover {
+    background-color: color-mix(in oklab, var(--color-primary) 88%, #000);
+  }
+  .btn-danger {
+    background-color: var(--color-badge-failed-foreground);
+    color: #fff;
+  }
+  .btn-danger:hover {
+    background-color: var(--color-badge-blocked-foreground);
+  }
+  .btn-secondary {
+    background-color: #fff;
+    color: var(--color-gray-primary);
+    border: 1px solid var(--color-gray-border);
+  }
+  .btn-secondary:hover {
+    background-color: var(--color-gray-background-alt);
+  }
+  .btn-sm {
+    height: 36px;
+    padding: 0 12px;
+    font-size: 13px;
+    border-radius: var(--radius-5);
+  }
+  .btn-xs {
+    height: 32px;
+    padding: 0 10px;
+    font-size: 12px;
+    border-radius: var(--radius-sm);
+  }
+
+  .field,
+  select.field-sm {
+    height: 40px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-gray-border);
+    background-color: #fff;
+    color: var(--color-secondary);
+    padding: 0 12px;
+    font-size: 14px;
+    outline: none;
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+  .field-sm {
+    height: 36px;
+    padding: 0 10px;
+    font-size: 13px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-gray-border);
+    background-color: #fff;
+    color: var(--color-secondary);
+    outline: none;
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+  .field::placeholder,
+  .field-sm::placeholder {
+    color: var(--color-gray-secondary);
+  }
+  .field:focus,
+  .field-sm:focus {
+    border-color: var(--color-primary);
+    box-shadow: none;
+  }
+  .field:disabled {
+    background-color: var(--color-gray-background);
+    color: var(--color-gray-secondary);
+  }
+  select.field,
+  select.field-sm {
+    appearance: none;
+    padding-right: 34px;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2359647A' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+  }
+}

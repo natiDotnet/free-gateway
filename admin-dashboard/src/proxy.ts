@@ -13,7 +13,12 @@ import { NextRequest, NextResponse } from 'next/server';
 const SESSION_COOKIE = 'fg_admin_session';
 
 function isPublic(pathname: string): boolean {
-  return pathname === '/login' || pathname.startsWith('/api/auth/login');
+  return (
+    pathname === '/login' ||
+    pathname.startsWith('/api/auth/login') ||
+    // Login-page brand assets (public, part of the login page).
+    pathname.startsWith('/brand/')
+  );
 }
 
 function withSecurityHeaders(response: NextResponse): NextResponse {

@@ -1,289 +1,335 @@
 import Link from 'next/link';
-import { can, listPayments, type Payment } from '@org/db';
+import Pagination from '../_pagination';
+import {
+  can,
+  countPaymentsByStatus,
+  listDistinctCurrencies,
+  listDistinctPaymentProviders,
+  listPaymentsPage,
+  PAYMENT_STATUSES,
+  type PaymentFilters,
+  type PaymentStatus,
+} from '@org/db';
 import { requirePagePermission } from '@/lib/session';
-import { statusBadge, OPEN_STATUSES } from '@/lib/ui';
+import {
+  OPEN_STATUSES,
+  formatDateTime,
+  formatDecimal,
+  formatInt,
+  statusBadge,
+} from '@/lib/ui';
 
 export const dynamic = 'force-dynamic';
 
-const STATUSES = new Set([
-  'pending',
-  'auth_needed',
-  'incomplete',
-  'success',
-  'failed',
-  'cancelled',
-  'blocked',
-]);
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+const PAGE_SIZE = 20;
 
-type Props = {
-  searchParams: Promise<{
-    q?: string;
-    status?: string;
-    saved?: string;
-    error?: string;
-  }>;
+type Query = {
+  q?: string;
+  status?: string;
+  provider?: string;
+  currency?: string;
+  from?: string;
+  to?: string;
+  page?: string;
+  perPage?: string;
+  saved?: string;
+  error?: string;
 };
 
-function matches(payment: Payment, q: string): boolean {
-  const haystack = [
-    payment.merchantReference,
-    payment.providerReference ?? '',
-    payment.provider,
-    payment.customerName ?? '',
-    payment.customerEmail ?? '',
-    payment.customerPhone ?? '',
-    String(payment.amount),
-  ]
-    .join(' ')
-    .toLowerCase();
-  return haystack.includes(q.toLowerCase());
-}
+type Props = { searchParams: Promise<Query> };
+
+const ISO_STATUSES = PAYMENT_STATUSES as readonly string[];
 
 export default async function PaymentsPage({ searchParams }: Props) {
   const admin = await requirePagePermission('payments.list');
   const params = await searchParams;
 
   const q = (params.q ?? '').trim();
-  const statusFilter =
-    params.status && STATUSES.has(params.status) ? params.status : '';
-
-  const all = await listPayments();
-  const payments = all.filter(
-    (p) =>
-      (!q || matches(p, q)) && (!statusFilter || p.status === statusFilter)
+  const statusFilter = ISO_STATUSES.includes(params.status ?? '') ? params.status! : '';
+  const providerFilter = (params.provider ?? '').trim();
+  const currencyFilter = (params.currency ?? '').trim();
+  const fromDay = ISO_DAY.test(params.from ?? '') ? params.from!.slice(0, 10) : '';
+  const toDay = ISO_DAY.test(params.to ?? '') ? params.to!.slice(0, 10) : '';
+  const page = Math.max(1, Number.parseInt(params.page ?? '1', 10) || 1);
+  const parsedPerPage = Number.parseInt(params.perPage ?? '', 10);
+  const perPage = [10, 20, 50].includes(parsedPerPage) ? parsedPerPage : PAGE_SIZE;
+  const hasFilters = Boolean(
+    q || statusFilter || providerFilter || currencyFilter || fromDay || toDay
   );
 
-  const counts = all.reduce(
-    (acc, p) => {
-      acc.total += 1;
-      if (p.status === 'success') acc.success += 1;
-      if (OPEN_STATUSES.includes(p.status)) acc.inFlight += 1;
-      if (p.status === 'failed' || p.status === 'cancelled' || p.status === 'blocked')
-        acc.closed += 1;
-      return acc;
-    },
-    { total: 0, success: 0, inFlight: 0, closed: 0 }
-  );
+  const filters: PaymentFilters = {
+    q: q || undefined,
+    status: statusFilter ? (statusFilter as PaymentStatus) : undefined,
+    provider: providerFilter || undefined,
+    currency: currencyFilter || undefined,
+    fromDay: fromDay || undefined,
+    toDay: toDay || undefined,
+  };
+
+  const [result, statusCounts, providers, currencies] = await Promise.all([
+    listPaymentsPage(filters, page, perPage),
+    countPaymentsByStatus(),
+    listDistinctPaymentProviders(),
+    listDistinctCurrencies(),
+  ]);
 
   const canVerify = can(admin.role, 'payments.verify');
   const canCancel = can(admin.role, 'payments.cancel');
+  const canExport = can(admin.role, 'reports.export');
+  const totalPages = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
+
+  const exportQuery = new URLSearchParams();
+  if (q) exportQuery.set('q', q);
+  if (statusFilter) exportQuery.set('status', statusFilter);
+  if (providerFilter) exportQuery.set('provider', providerFilter);
+  if (currencyFilter) exportQuery.set('currency', currencyFilter);
+  if (fromDay) exportQuery.set('from', fromDay);
+  if (toDay) exportQuery.set('to', toDay);
+  const exportHref = `/api/admin/payments/export${exportQuery.size ? `?${exportQuery}` : ''}`;
 
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Payments</h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            Transactions processed by the gateway. Webhooks are the source of
-            truth; use <strong>Verify</strong> for a server-side re-check
-            before fulfilling.
+          <h1 className="text-h1 tracking-tight">Payments</h1>
+          <p className="mt-1 max-w-2xl text-sm text-gray-secondary">
+            Transactions processed by the gateway across all providers. Webhooks
+            are the source of truth — use <strong>Verify</strong> for a
+            server-side re-check before fulfilling value.
           </p>
         </div>
-        <form
-          className="flex flex-wrap items-center gap-2"
-          method="GET"
-          action="/payments"
-        >
+        {canExport && (
+          <a
+            href={exportHref}
+            className="inline-flex items-center gap-1.5 btn btn-secondary"
+          >
+            Export CSV<span aria-hidden>↓</span>
+          </a>
+        )}
+      </header>
+
+      {params.saved === 'verified' && (
+        <div role="status" className="rounded-lg border border-badge-success bg-badge-success px-4 py-2.5 text-sm text-badge-success-foreground">
+          Payment re-verified server-side. The authoritative status was recorded in the event timeline.
+        </div>
+      )}
+      {params.saved === 'cancelled' && (
+        <div role="status" className="rounded-lg border border-badge-success bg-badge-success px-4 py-2.5 text-sm text-badge-success-foreground">
+          Payment cancelled. The merchant notification (if configured) was attempted and logged.
+        </div>
+      )}
+      {params.error === 'not_cancellable' && (
+        <div role="alert" className="rounded-lg border border-badge-failed bg-badge-failed px-4 py-2.5 text-sm text-badge-failed-foreground">
+          That payment has reached a final status and can no longer be cancelled.
+        </div>
+      )}
+
+      <form
+        method="GET"
+        action="/payments"
+        className="flex flex-wrap items-end gap-3 card p-4"
+      >
+        <label className="flex flex-col gap-1 text-xs font-medium text-gray-primary">
+          Search
           <input
             type="search"
             name="q"
             defaultValue={q}
-            placeholder="Search reference, customer, phone…"
-            aria-label="Search payments"
-            className="w-56 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+            placeholder="Reference, customer, phone, provider ref…"
+            className="field w-64"
           />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium text-gray-primary">
+          Status
           <select
             name="status"
             defaultValue={statusFilter}
-            aria-label="Filter status"
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            className="field select min-w-32"
           >
             <option value="">All statuses</option>
-            {[...STATUSES].map((s) => (
-              <option key={s} value={s}>
-                {s}
+            {ISO_STATUSES.map((status) => (
+              <option key={status} value={status}>
+                {status.replace('_', ' ')}
               </option>
             ))}
           </select>
-          <button
-            type="submit"
-            className="rounded-lg bg-slate-700 px-3.5 py-2 text-sm font-medium text-white hover:bg-slate-800"
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium text-gray-primary">
+          Provider
+          <select
+            name="provider"
+            defaultValue={providerFilter}
+            className="field select min-w-32"
           >
-            Filter
-          </button>
-          {(q || statusFilter) && (
-            <Link
-              href="/payments"
-              className="text-sm text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline"
-            >
+            <option value="">All providers</option>
+            {providers.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium text-gray-primary">
+          Currency
+          <select
+            name="currency"
+            defaultValue={currencyFilter}
+            className="field select min-w-24"
+          >
+            <option value="">All</option>
+            {currencies.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium text-gray-primary">
+          Created from
+          <input
+            type="date"
+            name="from"
+            defaultValue={fromDay}
+            className="field"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium text-gray-primary">
+          to
+          <input
+            type="date"
+            name="to"
+            defaultValue={toDay}
+            className="field"
+          />
+        </label>
+        <div className="ms-auto flex items-end gap-2">
+          {hasFilters && (
+            <Link href="/payments" className="btn btn-secondary btn-sm">
               Clear
             </Link>
           )}
-        </form>
-      </header>
-
-      {params.saved === 'verified' && (
-        <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-900">
-          Payment re-verified successfully.
+          <button type="submit" className="btn btn-primary">
+            Apply filters
+          </button>
         </div>
-      )}
-      {params.saved === 'cancelled' && (
-        <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-900">
-          Payment cancelled.
+      </form>
+
+      <section aria-label="Payment status totals" className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+        <Tile label="Total" value={Object.values(statusCounts).reduce((sum, count) => sum + count, 0)} tone="text-secondary" />
+        <Tile label="Successful" value={statusCounts.success} tone="text-badge-success-foreground" />
+        <Tile label="Pending" value={statusCounts.pending} tone="text-badge-pending-foreground" />
+        <Tile label="Awaiting auth" value={statusCounts.auth_needed} tone="text-badge-partial-refund-foreground" />
+        <Tile label="Failed" value={statusCounts.failed} tone="text-badge-failed-foreground" />
+        <Tile label="Cancelled" value={statusCounts.cancelled} tone="text-badge-failed-foreground" />
+        <Tile label="Blocked" value={statusCounts.blocked} tone="text-badge-blocked-foreground" />
+      </section>
+
+      <section className="overflow-hidden card">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-border px-5 py-4">
+          <h2 className="text-base font-semibold">
+            {formatInt(result.total)} transaction{result.total === 1 ? '' : 's'}{' '}
+            {hasFilters && <span className="text-xs font-normal text-gray-secondary">matching filters</span>}
+          </h2>
+          <p className="text-xs text-gray-secondary">
+            {result.rows.length === 0
+              ? 'No transactions to show'
+              : `Page ${result.page} of ${totalPages}`}
+          </p>
         </div>
-      )}
-      {params.error === 'not_cancellable' && (
-        <div className="rounded-lg border border-rose-300 bg-rose-50 px-4 py-2.5 text-sm text-rose-900">
-          That payment has reached a final status and can no longer be
-          cancelled.
-        </div>
-      )}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {[
-          { label: 'Total', value: counts.total, tone: 'text-slate-900' },
-          { label: 'Successful', value: counts.success, tone: 'text-emerald-700' },
-          { label: 'In flight', value: counts.inFlight, tone: 'text-amber-700' },
-          { label: 'Failed / cancelled', value: counts.closed, tone: 'text-rose-700' },
-        ].map((tile) => (
-          <div
-            key={tile.label}
-            className="rounded-xl border border-slate-200 bg-white p-4"
-          >
-            <span className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              {tile.label}
-            </span>
-            <span className={`text-2xl font-bold tracking-tight ${tile.tone}`}>
-              {tile.value}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="mb-3 text-base font-semibold">
-          Transactions{' '}
-          {payments.length !== all.length && (
-            <span className="text-xs font-normal text-slate-400">
-              ({payments.length} of {all.length})
-            </span>
-          )}
-        </h2>
-
-        {payments.length === 0 ? (
-          <p className="text-sm text-slate-400">
-            No transactions match. Initialize one from the checkout app, or
-            clear the filters.
+        {result.rows.length === 0 ? (
+          <p className="px-5 py-10 text-sm text-gray-secondary">
+            No transactions match these filters. Initialize one from the checkout
+            app (<code className="rounded bg-gray-background-alt px-1 font-mono text-xs">POST /api/payments/init</code>)
+            or clear the filters.
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
+            <table className="w-full min-w-[860px] text-sm">
+              <thead className="bg-gray-background-alt">
                 <tr>
-                  <th className="border-b border-slate-200 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                    Reference
-                  </th>
-                  <th className="border-b border-slate-200 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                    Amount
-                  </th>
-                  <th className="border-b border-slate-200 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                    Status
-                  </th>
-                  <th className="border-b border-slate-200 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                    Customer
-                  </th>
-                  <th className="border-b border-slate-200 px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                    Provider / ref
-                  </th>
-                  <th className="border-b border-slate-200 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                    Created
-                  </th>
-                  <th className="border-b border-slate-200 px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                    Actions
-                  </th>
+                  {['Reference', 'Amount', 'Status', 'Customer', 'Provider / ref', 'Created', 'Actions'].map(
+                    (label, index) => (
+                      <th
+                        key={label}
+                        className={`px-4 py-3 text-xs font-semibold text-gray-primary border-l border-gray-border first:border-l-0 ${index === 6 ? 'text-right' : 'text-left'}`}
+                      >
+                        {label}
+                      </th>
+                    )
+                  )}
                 </tr>
               </thead>
               <tbody>
-                {payments.map((p) => (
-                  <tr key={p.id} className="align-middle">
-                    <td className="border-b border-slate-100 px-3 py-2.5">
+                {result.rows.map((payment) => (
+                  <tr key={payment.id} className="hover:bg-gray-background-alt/70">
+                    <td className="border-b border-gray-border px-4 py-3.5">
                       <Link
-                        href={`/payments/${encodeURIComponent(p.merchantReference)}`}
-                        className="font-mono text-[13px] font-semibold text-teal-700 underline-offset-2 hover:underline"
+                        href={`/payments/${encodeURIComponent(payment.merchantReference)}`}
+                        className="font-mono text-[13px] font-semibold text-primary underline-offset-2 hover:underline"
                       >
-                        {p.merchantReference}
+                        {payment.merchantReference}
                       </Link>
                     </td>
-                    <td className="whitespace-nowrap border-b border-slate-100 px-3 py-2.5">
-                      {p.amount} {p.currency}
+                    <td className="whitespace-nowrap border-b border-gray-border px-4 py-3.5 tabular-nums">
+                      {formatDecimal(payment.amount)}{' '}
+                      <span className="text-xs text-gray-secondary">{payment.currency}</span>
                     </td>
-                    <td className="border-b border-slate-100 px-3 py-2.5">
-                      <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusBadge(p.status)}`}
-                      >
-                        {p.status}
+                    <td className="border-b border-gray-border px-4 py-3.5">
+                      <span className={`inline-flex rounded px-2 py-0.5 text-[11px] font-medium ${statusBadge(payment.status)}`}>
+                        {payment.status.replace('_', ' ')}
                       </span>
                     </td>
-                    <td className="border-b border-slate-100 px-3 py-2.5">
-                      {p.customerName ? (
-                        <span>
-                          {p.customerName}
-                          {p.customerPhone && (
-                            <span className="font-mono text-xs text-slate-400">
-                              {' '}
-                              · {p.customerPhone}
-                            </span>
-                          )}
-                        </span>
-                      ) : (
-                        <span className="text-slate-300">—</span>
+                    <td className="max-w-48 truncate border-b border-gray-border px-4 py-3.5 text-gray-primary">
+                      {payment.customerName ?? <span className="text-gray-secondary/50">—</span>}
+                      {payment.customerPhone && (
+                        <span className="font-mono text-xs text-gray-secondary"> · {payment.customerPhone}</span>
                       )}
                     </td>
-                    <td className="border-b border-slate-100 px-3 py-2.5 text-right">
-                      {p.providerReference ? (
-                        <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs">
-                          {p.providerReference}
+                    <td className="border-b border-gray-border px-4 py-3.5 text-right">
+                      {payment.providerReference ? (
+                        <code className="rounded bg-gray-background-alt px-1.5 py-0.5 font-mono text-xs">
+                          {payment.providerReference}
                         </code>
                       ) : (
-                        <span className="text-xs text-slate-400">
-                          {p.provider} · no ref
-                        </span>
+                        <span className="text-xs text-gray-secondary">{payment.provider} · no ref</span>
                       )}
                     </td>
-                    <td className="whitespace-nowrap border-b border-slate-100 px-3 py-2.5 tabular-nums">
-                      {new Date(p.createdAt).toLocaleString()}
+                    <td className="whitespace-nowrap border-b border-gray-border px-4 py-3.5 text-xs tabular-nums text-gray-secondary">
+                      {formatDateTime(payment.createdAt)}
                     </td>
-                    <td className="border-b border-slate-100 px-3 py-2.5 text-right">
+                    <td className="border-b border-gray-border px-4 py-3.5 text-right">
                       <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                        {canVerify && OPEN_STATUSES.includes(p.status) && (
+                        {canVerify && OPEN_STATUSES.includes(payment.status) && (
                           <form
                             method="POST"
-                            action={`/api/payments/${encodeURIComponent(p.merchantReference)}/verify`}
+                            action={`/api/payments/${encodeURIComponent(payment.merchantReference)}/verify`}
                           >
                             <button
                               type="submit"
-                              className="rounded-lg bg-slate-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-800"
+                              className="btn btn-primary btn-xs"
                             >
                               Verify
                             </button>
                           </form>
                         )}
-                        {canCancel && OPEN_STATUSES.includes(p.status) && (
+                        {canCancel && OPEN_STATUSES.includes(payment.status) && (
                           <form
                             method="POST"
-                            action={`/api/payments/${encodeURIComponent(p.merchantReference)}/cancel`}
+                            action={`/api/payments/${encodeURIComponent(payment.merchantReference)}/cancel`}
                           >
                             <button
                               type="submit"
-                              className="rounded-lg bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-500"
+                              className="btn btn-danger btn-xs"
                             >
                               Cancel
                             </button>
                           </form>
                         )}
                         <Link
-                          href={`/payments/${encodeURIComponent(p.merchantReference)}`}
-                          className="text-xs text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline"
+                          href={`/payments/${encodeURIComponent(payment.merchantReference)}`}
+                          className="text-xs text-gray-secondary underline-offset-2 hover:text-secondary hover:underline"
                         >
                           Detail
                         </Link>
@@ -295,7 +341,29 @@ export default async function PaymentsPage({ searchParams }: Props) {
             </table>
           </div>
         )}
+
+      <Pagination
+        basePath="/payments"
+        page={result.page}
+        pageCount={totalPages}
+        total={result.total}
+        pageSize={result.pageSize}
+        params={params}
+      />
       </section>
+    </div>
+  );
+}
+
+function Tile({ label, value, tone }: { label: string; value: number; tone: string }) {
+  return (
+    <div className="card p-3">
+      <span className="block text-[11px] font-semibold uppercase tracking-wider text-gray-secondary">
+        {label}
+      </span>
+      <span className={`text-xl font-bold tracking-tight tabular-nums ${tone}`}>
+        {formatInt(value)}
+      </span>
     </div>
   );
 }

@@ -45,7 +45,7 @@ function safeNext(value: unknown): string {
 
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request);
-  let body: { email?: string; password?: string; next?: string } = {};
+  let body: { email?: string; password?: string; next?: string; remember?: boolean } = {};
   try {
     body = await request.json();
   } catch {
@@ -83,7 +83,10 @@ export async function POST(request: NextRequest) {
 
   failures.delete(throttleKey);
 
-  const { token, expiresAt } = await createAdminSession(admin.id);
+  const remember = Boolean(body.remember);
+  const { token, expiresAt } = remember
+    ? await createAdminSession(admin.id, 24 * 7) // "Keep me signed in for 7 days"
+    : await createAdminSession(admin.id);
   await recordAudit({ action: 'auth.login', actor: admin, ip });
 
   const response = NextResponse.json({

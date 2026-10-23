@@ -55,10 +55,10 @@ const command = process.argv[2] ?? 'generate';
 if (command === 'generate') {
   runPrisma(['generate']);
 } else if (command === 'push') {
-  runPrisma(['db', 'push']);
+  runPrisma(['db', 'push', '--accept-data-loss']);
 } else if (command === 'prepare') {
   runPrisma(['generate']);
-  runPrisma(['db', 'push']);
+  runPrisma(['db', 'push', '--accept-data-loss']);
 } else {
   throw new Error(`Unknown database command "${command}".`);
 }

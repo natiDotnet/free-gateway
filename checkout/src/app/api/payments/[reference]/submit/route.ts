@@ -4,6 +4,7 @@ import {
   updatePaymentStatus,
   createPaymentEvent,
 } from '@org/db';
+import { notifyPaymentStatusChange, withGatewayLog } from '@/lib/gateway';
 
 /**
  * POST /api/payments/[reference]/submit
@@ -27,8 +28,17 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ reference: string }> }
 ) {
-  const { reference } = await params;
+  return withGatewayLog(request, 'payments/submit', async (meta) => {
+    const { reference } = await params;
+    meta.merchantReference = reference;
+    return handleSubmit(request, reference);
+  });
+}
 
+async function handleSubmit(
+  request: NextRequest,
+  reference: string
+): Promise<NextResponse> {
   const payment = await getPaymentByMerchantReference(reference);
   if (!payment) {
     return NextResponse.json({ message: 'Payment not found' }, { status: 404 });
@@ -89,6 +99,9 @@ export async function POST(
 
   // Awaiting the provider's asynchronous confirmation via webhook.
   await updatePaymentStatus(payment.id, 'auth_needed');
+
+  // Outbound merchant notification (notification_url), recorded with attempt.
+  await notifyPaymentStatusChange(payment.id, 'payment.auth_needed', 'pending');
 
   if (SIMULATE) {
     scheduleSimulatedWebhook(request, payment, provider);

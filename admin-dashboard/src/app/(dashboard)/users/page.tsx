@@ -11,8 +11,8 @@ export default async function UsersPage() {
   return (
     <div className="flex flex-col gap-6">
       <header>
-        <h1 className="text-2xl font-bold tracking-tight">Users &amp; roles</h1>
-        <p className="mt-1 max-w-2xl text-sm text-slate-500">
+        <h1 className="text-h1 tracking-tight">Users &amp; roles</h1>
+        <p className="mt-1 max-w-2xl text-sm text-gray-secondary">
           Staff who can operate this console. Roles map to permissions:{' '}
           <strong>Administrator</strong> manages everything (payments, users,
           audit), <strong>Operator</strong> can verify and cancel payments,

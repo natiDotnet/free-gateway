@@ -4,6 +4,7 @@ import {
   updatePaymentStatus,
   createPaymentEvent,
 } from '@org/db';
+import { notifyPaymentStatusChange, withGatewayLog } from '@/lib/gateway';
 
 /**
  * POST /api/payments/[reference]/cancel
@@ -15,8 +16,14 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ reference: string }> }
 ) {
-  const { reference } = await params;
+  return withGatewayLog(request, 'payments/cancel', async (meta) => {
+    const { reference } = await params;
+    meta.merchantReference = reference;
+    return handleCancel(reference);
+  });
+}
 
+async function handleCancel(reference: string): Promise<NextResponse> {
   const payment = await getPaymentByMerchantReference(reference);
   if (!payment) {
     return NextResponse.json({ message: 'Payment not found' }, { status: 404 });
@@ -29,6 +36,7 @@ export async function POST(
 
   if (nextStatus !== payment.status) {
     await updatePaymentStatus(payment.id, nextStatus);
+    await notifyPaymentStatusChange(payment.id, `payment.${nextStatus}`, payment.status);
   }
 
   await createPaymentEvent({

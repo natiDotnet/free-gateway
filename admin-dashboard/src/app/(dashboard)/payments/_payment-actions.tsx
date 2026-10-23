@@ -56,7 +56,7 @@ export default function PaymentActions({
   return (
     <div className="flex flex-col items-start gap-2 lg:items-end">
       {error && (
-        <div className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-900">
+        <div className="rounded-lg border border-badge-failed bg-badge-failed px-3 py-2 text-xs text-badge-failed-foreground">
           {error}
         </div>
       )}
@@ -65,7 +65,7 @@ export default function PaymentActions({
           <button
             onClick={() => send('verify')}
             disabled={busy !== null}
-            className="inline-flex items-center rounded-lg bg-teal-700 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-teal-600 disabled:pointer-events-none disabled:opacity-55"
+            className="btn btn-primary"
           >
             {busy === 'verify' ? 'Verifying…' : 'Verify now'}
           </button>
@@ -74,7 +74,7 @@ export default function PaymentActions({
           <button
             onClick={() => send('cancel')}
             disabled={busy !== null}
-            className="inline-flex items-center rounded-lg bg-red-600 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-red-500 disabled:pointer-events-none disabled:opacity-55"
+            className="btn btn-danger"
           >
             {busy === 'cancel' ? 'Cancelling…' : 'Cancel payment'}
           </button>

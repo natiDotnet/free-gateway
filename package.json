@@ -4,6 +4,7 @@
   "license": "MIT",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "test:unit": "node --test --no-warnings admin-dashboard/src/lib/*.test.ts packages/db/src/*.test.ts",
     "db:generate": "node packages/db/scripts/prisma.mjs generate",
     "db:push": "node packages/db/scripts/prisma.mjs push",
     "db:prepare": "node packages/db/scripts/prisma.mjs prepare",

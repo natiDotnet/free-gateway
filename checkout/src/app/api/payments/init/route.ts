@@ -5,6 +5,7 @@ import {
   updatePaymentDetails,
   type CreatePaymentInput,
 } from '@org/db';
+import { enforceApiKey, withGatewayLog } from '@/lib/gateway';
 
 const CURRENCIES = ['USD', 'ETB', 'UGX', 'DJF'];
 
@@ -18,8 +19,14 @@ const CURRENCIES = ['USD', 'ETB', 'UGX', 'DJF'];
  *
  * Stores the payment (status=pending) and returns a checkout_url the customer
  * is redirected to.
+ *
+ * API-key authentication is opt-in via `GATEWAY_API_KEYS_REQUIRED=true`;
+ * keys need the `payments.init` scope then (Bearer fgk_… or x-api-key).
  */
-export async function POST(request: NextRequest) {
+async function initialize(
+  request: NextRequest,
+  meta: { setMerchant(ref: string): void; markValidation(): void }
+): Promise<NextResponse> {
   try {
     const body = await request.json();
 
@@ -36,6 +43,7 @@ export async function POST(request: NextRequest) {
 
     // Required fields (Chapa-style)
     if (!amount || !currency) {
+      meta.markValidation();
       return NextResponse.json(
         { message: 'amount and currency are required' },
         { status: 400 }
@@ -43,6 +51,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!CURRENCIES.includes(currency)) {
+      meta.markValidation();
       return NextResponse.json(
         { message: `Unsupported currency: ${currency}` },
         { status: 400 }
@@ -51,10 +60,12 @@ export async function POST(request: NextRequest) {
 
     const reference =
       merchant_reference ?? `pay-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    meta.setMerchant(String(reference));
 
     // Idempotency: avoid creating duplicate orders for the same reference.
     const existing = await getPaymentByMerchantReference(reference);
     if (existing && existing.status !== 'pending') {
+      meta.markValidation();
       return NextResponse.json(
         {
           message: 'A payment for this reference already exists',
@@ -99,6 +110,7 @@ export async function POST(request: NextRequest) {
         notificationUrl: input.notificationUrl ?? null,
       });
       if (!updated) {
+        meta.markValidation();
         return NextResponse.json(
           { message: 'A payment for this reference has already started processing' },
           { status: 409 }
@@ -132,4 +144,25 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+export async function POST(request: NextRequest) {
+  return withGatewayLog(request, 'payments/init', async (meta) => {
+    const gate = await enforceApiKey(request, 'payments.init', {
+      setApiKey: (auth) => {
+        meta.apiKeyId = auth.id;
+        meta.apiKeyPrefix = auth.prefix;
+      },
+    });
+    if (!gate.ok && gate.response) return gate.response;
+
+    return initialize(request, {
+      setMerchant: (ref) => {
+        meta.merchantReference = ref;
+      },
+      markValidation: () => {
+        meta.errorCode = 'validation';
+      },
+    });
+  });
 }

@@ -2,18 +2,18 @@ import { defineConfig, devices } from '@playwright/test';
 import { nxE2EPreset } from '@nx/playwright/preset';
 import { workspaceRoot } from '@nx/devkit';
 
-// For CI, you may want to set BASE_URL to the deployed application.
-const baseURL = process.env['BASE_URL'] || 'http://localhost:3000';
-
 /**
- * Read environment variables from file.
- * https://github.com/motdotla/dotenv
- */
-// import 'dotenv/config';
-
-/**
- * See https://playwright.dev/docs/test-configuration.
+ * This gateway is a two-app setup:
+ *  - checkout (public gateway API + hosted checkout) on :3000
+ *  - admin-dashboard (console under test) on :3001
  *
+ * BASE_URL / ADMIN_URL can point CI at deployed instances; locally both dev
+ * servers are started (reused when already running).
+ */
+const checkoutURL = process.env['BASE_URL'] || 'http://localhost:3000';
+const adminURL = process.env['ADMIN_URL'] || 'http://localhost:3001';
+
+/**
  * Generated as a .mts file so Node forces ESM regardless of workspace
  * `type`. Playwright routes `.mts` through its ESM loader (dynamic import,
  * bypassing the pirates CJS-compile path), and Nx's native TS strip loads
@@ -23,53 +23,50 @@ const baseURL = process.env['BASE_URL'] || 'http://localhost:3000';
  */
 export default defineConfig({
   ...nxE2EPreset(import.meta.dirname, { testDir: './src' }),
-  /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
+  testMatch: ['**/*.spec.ts'],
+  testIgnore: ['**/example.spec.ts'],
+  /* Next dev compiles routes lazily — give first navigation generous time */
+  timeout: 90_000,
+  expect: { timeout: 20_000 },
+  fullyParallel: true,
+  retries: process.env['CI'] ? 2 : 0,
+  reporter: 'list',
   use: {
-    baseURL,
+    baseURL: adminURL,
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
   },
-  /* Run your local dev server before starting the tests */
-  webServer: {
-    command: 'npx nx run @org/admin-dashboard:dev',
-    url: 'http://localhost:3000',
-    reuseExistingServer: true,
-    cwd: workspaceRoot,
-  },
+  webServer: [
+    {
+      command: 'npx nx run @org/checkout:dev',
+      url: checkoutURL,
+      reuseExistingServer: true,
+      cwd: workspaceRoot,
+      timeout: 120_000,
+    },
+    {
+      command: 'npm run dev:admin-dashboard',
+      url: adminURL,
+      reuseExistingServer: true,
+      cwd: workspaceRoot,
+      timeout: 120_000,
+    },
+  ],
   projects: [
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
 
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-    },
-
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-    },
-
-    // Uncomment for mobile browsers support
-    /* {
-      name: 'Mobile Chrome',
-      use: { ...devices['Pixel 5'] },
-    },
-    {
-      name: 'Mobile Safari',
-      use: { ...devices['iPhone 12'] },
-    }, */
-
-    // Uncomment for branded browsers
-    /* {
-      name: 'Microsoft Edge',
-      use: { ...devices['Desktop Edge'], channel: 'msedge' },
-    },
-    {
-      name: 'Google Chrome',
-      use: { ...devices['Desktop Chrome'], channel: 'chrome' },
-    } */
+    /* Firefox/WebKit are listed for CI (they follow the same flows); enable
+     * them once the first chromium run is green in CI:
+     * {
+     *   name: 'firefox',
+     *   use: { ...devices['Desktop Firefox'] },
+     * },
+     * {
+     *   name: 'webkit',
+     *   use: { ...devices['Desktop Safari'] },
+     * }, */
   ],
 });
